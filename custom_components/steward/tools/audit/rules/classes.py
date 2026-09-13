@@ -18,14 +18,26 @@ POWER_UNITS = frozenset({"W", "kW", "MW"})
 TEMPERATURE_UNITS = frozenset({"°C", "°F", "K"})
 
 
+# Energy-unit sensors that are not meters. A forecast revises up and down all
+# day and a per-session figure resets each time, so neither belongs in
+# long-term statistics or on the Energy dashboard.
+NOT_A_METER = re.compile(
+    r"forecast|estimat|predict|expected|remaining|tomorrow|next_hour|current_hour|"
+    r"last_(charge|session|trip)|session_energy|per_session",
+    re.IGNORECASE,
+)
+
+
 @rule(
     "sensor/missing-state-class",
-    Severity.ERROR,
-    "Energy sensor records no statistics",
+    Severity.WARNING,
+    "Energy meter records no statistics",
     TYPES,
     why="Without a state_class the recorder keeps no long-term statistics, so the "
         "sensor cannot appear on the Energy dashboard and its history is purged with "
-        "everything else. The data is lost, not merely unshown.",
+        "everything else. For a cumulative meter that is data lost, not merely unshown. "
+        "Forecast and per-session sensors are skipped: they are not meters and should "
+        "not have one.",
     tags=("classes", "energy"),
 )
 def missing_state_class(ctx: AuditContext) -> Iterator[Finding]:
@@ -35,12 +47,16 @@ def missing_state_class(ctx: AuditContext) -> Iterator[Finding]:
             continue
         if state.attributes.get("state_class") in ("total_increasing", "total"):
             continue
+        name = str(state.attributes.get("friendly_name", ""))
+        if NOT_A_METER.search(state.entity_id) or NOT_A_METER.search(name):
+            continue
         yield Finding(
             entity_id=state.entity_id,
             detail=f"unit {unit}, state_class "
                    f"{state.attributes.get('state_class') or 'none'}",
-            fix="Set state_class to total_increasing for a meter that only rises, or "
-                "total if it can decrease",
+            fix="Set state_class to total_increasing for a meter that only rises and "
+                "resets to zero, or total for a net meter that can fall. If this is a "
+                "forecast or a per-session figure, leave it without one.",
         )
 
 

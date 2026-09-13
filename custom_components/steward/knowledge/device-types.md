@@ -51,6 +51,13 @@ usually a defect, not a choice.
 The Energy dashboard specifically requires `device_class: energy` with
 `state_class: total_increasing` (or `total`), in Wh/kWh/MWh.
 
+Not every kWh sensor is a meter. A solar forecast for today revises up and down
+as the day goes on; a "last charge energy" figure resets with each session.
+Giving either a `state_class` produces statistics that mean nothing and, worse,
+offers a forecast to the Energy dashboard as if it were consumption. Leave them
+without one. The audit skips sensors whose names say forecast, estimate,
+remaining, tomorrow or per-session.
+
 ## One function, two entities
 
 Some integrations expose the same physical function twice: a relay as both a

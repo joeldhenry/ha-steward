@@ -155,7 +155,6 @@ than dropping the connection.
 grouped by rule, each pointing at the document explaining the fix:
 
 ```
-[error  ] sensor/missing-state-class    6   Energy sensors recording no statistics
 [warning] entity/wrong-area            11   Entity names an area it is not assigned to
 [warning] entity/no-area               90   Primary entity has no area
 [info   ] area/not-a-room               2   Area is a grouping, not a room
