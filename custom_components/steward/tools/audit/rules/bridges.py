@@ -5,8 +5,8 @@ that Home Assistant may already have natively. The result is two entities for
 one physical thing: both work, both appear on dashboards and in voice pickers,
 and only one of them reports the full feature set.
 
-This is worth finding because nothing in Home Assistant flags it — each
-integration is behaving correctly on its own.
+Nothing in Home Assistant flags it, because each integration is behaving
+correctly on its own.
 """
 
 from __future__ import annotations

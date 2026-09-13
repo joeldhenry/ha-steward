@@ -71,7 +71,7 @@ async def _validate(hass: HomeAssistant, kind: str, config_id: str, config: dict
     "automation's logic. Updates replace the whole config rather than merging, so call "
     "'get' first and send the complete object back. Home Assistant validates before "
     "saving and reloads the domain afterwards. Operates on automations.yaml, "
-    "scripts.yaml and scenes.yaml — the files the UI editor uses. Automations kept in "
+    "scripts.yaml and scenes.yaml, the files the UI editor uses. Automations kept in "
     "other files via !include are visible as entities but cannot be edited here.",
     Access.WRITE,
     {

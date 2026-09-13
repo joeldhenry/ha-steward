@@ -1,14 +1,14 @@
 # Onboarding an existing Home Assistant instance
 
 A running instance that has grown organically usually has the same handful of
-structural problems. Work in this order — each step makes the next one cheaper.
+structural problems. Work in this order; each step makes the next one cheaper.
 
 ## 1. Fix the area registry first
 
 Everything else targets areas, so correct them before touching entities.
 
 - One area per physical room. Delete or convert anything that is not a room
-  ("All House", "Integrations", "Security") — those are labels.
+  ("All House", "Integrations", "Security"); those are labels.
 - Consistent capitalisation. `staircase` and `Front door` should be `Staircase`
   and `Front Door`.
 - Fix spelling. An area named `Intergrations` will be matched literally by
@@ -18,14 +18,14 @@ Everything else targets areas, so correct them before touching entities.
 ## 2. Assign every physical device to an area
 
 Filter the device list by "no area". Ignore devices with `entry_type: service`
-(Sun, Backup, HACS, the weather provider) — those are not in a room and never
+(Sun, Backup, HACS, the weather provider); those are not in a room and never
 will be.
 
 ## 3. Override entity areas where function and hardware diverge
 
-For any device whose entities affect more than one room — multi-gang switches,
-multi-channel relays, a plug whose sensors and switch belong to different places
-— override the area per entity. See `ha://knowledge/areas`.
+For any device whose entities affect more than one room (multi-gang switches,
+multi-channel relays, a plug whose sensors and switch belong to different
+places), override the area per entity. See `ha://knowledge/areas`.
 
 ## 4. Correct device types
 

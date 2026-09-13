@@ -145,7 +145,7 @@ def diagnostic_exposed(ctx: AuditContext) -> Iterator[Finding]:
     "Binary sensor has no device class, so voice cannot be asked about it",
     COMPANION,
     why="Home Assistant exposes a binary sensor to Assist only when its device class "
-        "says what the reading means — door, window, motion, moisture and a few others. "
+        "says what the reading means: door, window, motion, moisture and a few others. "
         "Without one it is invisible to voice entirely, cannot answer 'is the back door "
         "open?', and shows a generic icon on dashboards.",
     tags=("voice", "classes", "dashboard"),

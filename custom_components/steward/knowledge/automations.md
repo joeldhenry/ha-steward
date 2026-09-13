@@ -2,15 +2,15 @@
 
 ## Target entities, not devices
 
-The automation editor offers device triggers first, and they read well — "when
+The automation editor offers device triggers first, and they read well: "when
 the hallway motion sensor detects motion". They are also the most common cause
 of an automation that silently stops working.
 
 A device trigger stores a `device_id`: an internal identifier generated when the
-device is added. **Remove a device and add it back and it gets a new
-`device_id`, while its `entity_id` stays the same.** Re-pair a flaky Zigbee
+device is added. Remove a device and add it back and it gets a new `device_id`,
+while its `entity_id` stays the same. Re-pair a flaky Zigbee
 sensor and every device-based automation referencing it is now pointing at
-nothing. Nothing warns you; the automation simply never fires again.
+nothing. Nothing warns you; the automation never fires again.
 
 Entity triggers survive re-pairing, are readable in YAML, and can be shared
 between instances. Prefer:
@@ -27,7 +27,7 @@ over the device equivalent. The same applies to conditions and actions:
 
 ## Target areas where you mean a room
 
-Listing eight individual lights is brittle — add a ninth and the automation is
+Listing eight individual lights is brittle: add a ninth and the automation is
 silently incomplete. Targeting the area covers whatever is in the room now:
 
 ```yaml

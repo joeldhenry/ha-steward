@@ -192,8 +192,8 @@ async def _load_yaml_dict(hass: HomeAssistant, filename: str) -> dict[str, Any]:
 async def _load_dashboards(hass: HomeAssistant) -> dict[str, Any]:
     """Stored Lovelace configs, keyed by url_path.
 
-    Dashboards left on the auto-generated strategy have no stored config, which
-    is not an error — it is the default, and the reason area data matters.
+    Dashboards left on the auto-generated strategy have no stored config. That is
+    not an error; it is the default, and the reason area data matters.
     """
     if "lovelace" not in hass.config.components:
         return {}

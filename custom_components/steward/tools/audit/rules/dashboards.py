@@ -1,7 +1,7 @@
 """Dashboards.
 
 Most users never build one. Home Assistant generates an Overview from the area
-registry, so for them the dashboard *is* the area data — which is why the area
+registry, so for them the dashboard is the area data, which is why the area
 rules carry a dashboard tag. These rules cover the dashboards that do exist.
 """
 

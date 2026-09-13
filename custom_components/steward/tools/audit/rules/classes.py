@@ -78,7 +78,7 @@ def missing_device_class(ctx: AuditContext) -> Iterator[Finding]:
     TYPES,
     why="A relay reported as a switch is missed by 'turn off all the lights', gets a "
         "toggle instead of a light card, and is invisible to anything targeting the "
-        "light domain — including CarPlay's lights section.",
+        "light domain, including CarPlay's lights section.",
     tags=("types", "dashboard", "voice"),
 )
 def switch_as_x(ctx: AuditContext) -> Iterator[Finding]:

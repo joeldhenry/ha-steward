@@ -1,7 +1,7 @@
 # Areas, floors, labels and categories
 
-Four organisational tools, each with a distinct job. Using the wrong one is the
-most common structural mistake in a Home Assistant install.
+Four organisational tools, each with a distinct job. Using the wrong one is a
+common structural mistake in a Home Assistant install.
 
 | Tool | Represents | Assigned to |
 |---|---|---|
@@ -13,7 +13,7 @@ most common structural mistake in a Home Assistant install.
 ## Areas are physical, and only physical
 
 An area is a room. "All House", "Integrations", "Batteries" and "Security" are
-not rooms — they are labels. Putting them in the area registry corrupts the one
+not rooms; they are labels. Putting them in the area registry corrupts the one
 structure that voice control and area-targeted automations depend on.
 
 ## Floors group areas, not devices
@@ -22,7 +22,7 @@ Devices and entities cannot be assigned to a floor directly; they inherit it
 from their area. An install with more than one level should define floors, or
 "turn off everything upstairs" has nothing to resolve against.
 
-## Entities inherit their device's area — and can override it
+## Entities inherit their device's area, and can override it
 
 > When you assign a device to an area, all its entities inherit that area. You
 > can override this for individual entities.
@@ -34,12 +34,12 @@ room while assigning its switch entity to the kitchen.
 ### The multi-gang switch case
 
 A two-gang wall switch in the hallway drives a porch light and a living room
-lamp. The **device** lives in the Hallway. But:
+lamp. The device lives in the Hallway. But:
 
-- the gang controlling the porch light should be overridden to **Porch**
-- the gang controlling the lamp should be overridden to **Living Room**
+- the gang controlling the porch light should be overridden to Porch
+- the gang controlling the lamp should be overridden to Living Room
 
-Assign each entity to the area it **affects**, not the area the hardware sits
+Assign each entity to the area it *affects*, not the area the hardware sits
 in. Otherwise "turn off the living room lights" misses the lamp, and "turn off
 the hallway lights" kills the porch.
 

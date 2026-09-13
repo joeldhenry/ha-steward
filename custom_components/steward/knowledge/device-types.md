@@ -21,7 +21,7 @@ The **Switch as X** helper re-presents a switch entity as a different domain:
 Create it under **Settings → Devices & services → Helpers → Create helper →
 Switch as X**, choosing the switch entity and the target type.
 
-The original switch entity is **hidden, not deleted** — it stays available to
+The original switch entity is hidden, not deleted: it stays available to
 anything referencing it, but disappears from pickers so the new entity is the
 obvious choice. The new entity joins the original's device and area.
 
@@ -43,7 +43,7 @@ Three attributes decide whether a sensor is usable beyond a raw number:
   - `total` — a counter that can also decrease (net import/export)
 - **`unit_of_measurement`** — must be consistent with the device class.
 
-**A sensor with no `state_class` generates no long-term statistics.** Its history
+A sensor with no `state_class` generates no long-term statistics. Its history
 is purged with everything else (10 days by default) and it cannot appear on the
 Energy dashboard or be queried for monthly totals. For an energy sensor this is
 usually a defect, not a choice.
@@ -53,12 +53,12 @@ The Energy dashboard specifically requires `device_class: energy` with
 
 ## One function, two entities
 
-Some integrations expose the same physical function twice — a relay as both a
+Some integrations expose the same physical function twice: a relay as both a
 `switch` and a `light`, or a climate unit as both `climate` and a set of
 `select` helpers. Leaving both visible means a person or a model has two ways to
 do one thing and no way to tell which is right.
 
-Pick the entity that best describes the function, and **hide** the other. Hiding
+Pick the entity that best describes the function, and hide the other. Hiding
 keeps existing references working; disabling stops it being updated at all and
 will break anything still pointing at it.
 

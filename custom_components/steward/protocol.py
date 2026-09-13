@@ -77,7 +77,7 @@ class MCPProtocol:
 
         if handler is None:
             # Notifications we do not implement (notifications/initialized) are
-            # simply acknowledged.
+            # acknowledged without a reply.
             if is_notification:
                 return None
             return json_rpc_error(request_id, METHOD_NOT_FOUND, f"Unknown method '{method}'")
@@ -113,7 +113,7 @@ class MCPProtocol:
             },
             "instructions": (
                 "This server manages a Home Assistant instance. Before changing how it is "
-                "organised — naming, areas, device types — read the relevant "
+                "organised (naming, areas, device types), read the relevant "
                 "ha://knowledge/* resource, and run ha_audit first when the instance is "
                 "unfamiliar. "
                 f"Connected as {policy.user.name}"

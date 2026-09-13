@@ -1,8 +1,8 @@
 """Automations, scripts and scenes.
 
 Rules here read the stored YAML rather than entity state, because the problems
-worth finding — a reference to a deleted entity, a trigger bound to a device ID
-— are invisible until the automation runs and quietly does nothing.
+that matter (a reference to a deleted entity, a trigger bound to a device ID)
+are invisible until the automation runs and does nothing.
 """
 
 from __future__ import annotations

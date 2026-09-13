@@ -1,7 +1,7 @@
 """Areas and floors.
 
-The auto-generated Overview dashboard — what a user sees before they build
-their own — groups entities by area. An instance with bad area data has a bad
+The auto-generated Overview dashboard, what a user sees before they build
+their own, groups entities by area. An instance with bad area data has a bad
 default dashboard, and no amount of dashboard work fixes the cause.
 """
 
