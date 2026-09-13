@@ -152,7 +152,7 @@ def diagnostic_exposed(ctx: AuditContext) -> Iterator[Finding]:
 )
 def unqueryable_binary_sensor(ctx: AuditContext) -> Iterator[Finding]:
     for entry in ctx.live_entities:
-        if entry.domain != "binary_sensor" or not ctx.is_primary(entry):
+        if entry.domain != "binary_sensor" or not ctx.is_primary(entry) or ctx.is_roaming(entry):
             continue
         state = ctx.state_of(entry.entity_id)
         declared = entry.device_class or entry.original_device_class or (

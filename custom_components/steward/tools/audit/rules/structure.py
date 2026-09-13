@@ -113,7 +113,7 @@ def empty_area(ctx: AuditContext) -> Iterator[Finding]:
 )
 def device_no_area(ctx: AuditContext) -> Iterator[Finding]:
     for device in ctx.physical_devices:
-        if not device.area_id:
+        if not device.area_id and not ctx.device_is_roaming(device):
             yield Finding(
                 device=ctx.device_name(device),
                 detail=f"{device.manufacturer or 'unknown'} {device.model or ''}".strip(),
@@ -132,7 +132,7 @@ def device_no_area(ctx: AuditContext) -> Iterator[Finding]:
 )
 def entity_no_area(ctx: AuditContext) -> Iterator[Finding]:
     for entry in ctx.live_entities:
-        if not ctx.is_primary(entry) or ctx.area_id_of(entry):
+        if not ctx.is_primary(entry) or ctx.area_id_of(entry) or ctx.is_roaming(entry):
             continue
         device = ctx.device_of(entry)
         # Only an entity attached to a real device can sit in a room; helpers,

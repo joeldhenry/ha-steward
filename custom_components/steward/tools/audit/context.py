@@ -147,6 +147,19 @@ class AuditContext:
         device = self.device_of(entry)
         return device is not None and device.entry_type == dr.DeviceEntryType.SERVICE
 
+    ROAMING_PLATFORMS = frozenset({"mobile_app"})
+
+    def is_roaming(self, entry: er.RegistryEntry) -> bool:
+        """Phones, tablets and laptops from the companion app. They move, so a
+        missing area or an unclassified sensor on them is not a defect."""
+        return entry.platform in self.ROAMING_PLATFORMS
+
+    def device_is_roaming(self, device: dr.DeviceEntry) -> bool:
+        return any(
+            e.platform in self.ROAMING_PLATFORMS
+            for e in self.all_entities if e.device_id == device.id
+        )
+
     def mentions_area(self, text: str, area_name: str) -> bool:
         """Whole-word match, so 'Bedroom' does not match inside 'Bedrooms'."""
         return re.search(rf"\b{re.escape(area_name)}\b", text, re.IGNORECASE) is not None

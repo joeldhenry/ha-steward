@@ -131,11 +131,18 @@ async def statistics(hass: HomeAssistant, _policy: Policy, args: dict[str, Any])
 @tool(
     "ha_logbook",
     "Logbook entries, which describe what changed and why in readable form. Better "
-    "than ha_history for tracing a sequence of events.",
+    "than ha_history for tracing a sequence of events. Numeric sensors never appear "
+    "here; Home Assistant treats them as continuous. Use ha_history for those.",
     Access.READ,
     {
         "entity_id": Arg("string", "Restrict to one entity"),
         "hours_back": Arg("number", "How far back to look", default=24),
+        "limit": Arg(
+            "integer",
+            "Most recent entries to return. A busy house logs thousands per hour, so "
+            "filter by entity or keep this small.",
+            default=100, minimum=1, maximum=2000,
+        ),
     },
 )
 async def logbook(hass: HomeAssistant, policy: Policy, args: dict[str, Any]) -> Any:
@@ -157,7 +164,17 @@ async def logbook(hass: HomeAssistant, policy: Policy, args: dict[str, Any]) -> 
     )
     if entity_ids is None:
         rows = [r for r in rows if not r.get("entity_id") or policy.can_read_entity(r["entity_id"])]
-    return rows
+
+    limit = args.get("limit", 100)
+    if len(rows) <= limit:
+        return rows
+    # Newest last, so the tail is the most recent slice.
+    return {
+        "entries": rows[-limit:],
+        "returned": limit,
+        "total_in_window": len(rows),
+        "note": "Truncated to the most recent entries. Filter by entity_id or raise limit.",
+    }
 
 
 @tool(
@@ -205,7 +222,7 @@ async def error_log(hass: HomeAssistant, _policy: Policy, args: dict[str, Any]) 
     "Automation and script traces: a step-by-step record of a past run showing which "
     "triggers fired, which conditions passed or failed, and what each step did. This "
     "is how to find out why an automation did not do what was expected, rather than "
-    "guessing from its config.",
+    "guessing from its config. Recent traces survive a restart.",
     Access.SENSITIVE,
     {
         "action": Arg("string", "List recent runs, or fetch one in full",
@@ -222,45 +239,42 @@ async def error_log(hass: HomeAssistant, _policy: Policy, args: dict[str, Any]) 
 )
 async def trace(hass: HomeAssistant, _policy: Policy, args: dict[str, Any]) -> Any:
     _require(hass, "trace")
-    from homeassistant.components.trace.const import DATA_TRACE
+    # Go through the same helpers the WebSocket API uses. They restore traces
+    # persisted across restarts and hide how the store is shaped, which changed
+    # between releases.
+    from homeassistant.components.trace.util import async_get_trace, async_list_traces
 
-    stored = hass.data.get(DATA_TRACE) or {}
     domain = args.get("domain", "automation")
+    item_id = args.get("item_id")
 
     if args["action"] == "list":
-        results = []
-        for key, runs in stored.items():
-            trace_domain, _, item_id = key.partition(".")
-            if trace_domain != domain:
-                continue
-            if args.get("item_id") and item_id != args["item_id"]:
-                continue
-            for run_id, run in runs.items():
-                short = run.as_short_dict()
-                results.append(
-                    {
-                        "item_id": item_id,
-                        "run_id": run_id,
-                        "timestamp": short.get("timestamp"),
-                        "state": short.get("state"),
-                        "script_execution": short.get("script_execution"),
-                        "error": short.get("error"),
-                    }
-                )
-        results.sort(key=lambda r: str(r.get("timestamp")), reverse=True)
+        key = f"{domain}.{item_id}" if item_id else None
+        traces = await async_list_traces(hass, domain, key)
+        results = [
+            {
+                "item_id": t.get("item_id"),
+                "run_id": t.get("run_id"),
+                "started": (t.get("timestamp") or {}).get("start"),
+                "finished": (t.get("timestamp") or {}).get("finish"),
+                "state": t.get("state"),
+                "script_execution": t.get("script_execution"),
+                "last_step": t.get("last_step"),
+                "error": t.get("error"),
+            }
+            for t in traces
+        ]
+        results.sort(key=lambda r: str(r.get("started")), reverse=True)
         if not results:
             return {
                 "traces": [],
-                "note": "No traces stored. Traces are kept in memory for recent runs "
-                        "only, so trigger the automation and try again.",
+                "note": "No traces stored for that selection. Trigger the automation and try again.",
             }
         return results
 
-    if not args.get("item_id") or not args.get("run_id"):
+    if not item_id or not args.get("run_id"):
         raise ValueError("item_id and run_id are both required to get a trace; use 'list' first")
 
-    key = f"{domain}.{args['item_id']}"
-    runs = stored.get(key)
-    if not runs or args["run_id"] not in runs:
-        raise ValueError(f"No trace for {key} run {args['run_id']}")
-    return runs[args["run_id"]].as_extended_dict()
+    try:
+        return await async_get_trace(hass, f"{domain}.{item_id}", args["run_id"])
+    except KeyError as err:
+        raise ValueError(f"No trace for {domain}.{item_id} run {args['run_id']}") from err

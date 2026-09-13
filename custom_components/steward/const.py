@@ -11,7 +11,7 @@ MCP_PATH: Final = "/api/steward/mcp"
 
 SERVER_NAME: Final = "steward"
 SERVER_TITLE: Final = "Steward - Home Assistant MCP Plugin"
-SERVER_VERSION: Final = "0.2.0"
+SERVER_VERSION: Final = "0.2.1"
 
 # Echoed back when the client asks for something we do not recognise.
 DEFAULT_PROTOCOL_VERSION: Final = "2025-06-18"
