@@ -73,6 +73,32 @@ remote servers:
 Access is tied to that Home Assistant account, shows up in the user's token
 list, and is revoked by revoking it there.
 
+### Claude Code: pin the callback port
+
+Claude Code identifies itself with a client metadata document that registers
+`http://localhost/callback` with no port, then listens on a random port. Home
+Assistant compares redirect URIs by exact string match, so the login ends with
+"Invalid redirect URI". Two specifications disagree here: the client metadata
+document draft requires exact matching, while RFC 8252 section 7.3 says an
+authorization server "MUST allow any port to be specified at the time of the
+request for loopback IP redirect URIs". Home Assistant follows the first,
+Claude Code the second.
+
+Steward serves its own metadata document at `/api/steward/oauth-client.json`,
+listing fixed loopback ports 8080, 8090 and 8888. Point Claude Code at it and
+pin the callback to one of those ports:
+
+```bash
+claude mcp add --transport http --scope user \
+  --client-id https://your-home-assistant/api/steward/oauth-client.json \
+  --callback-port 8080 \
+  steward https://your-home-assistant/api/steward/mcp
+```
+
+Then `/mcp`, select `steward`, and log in as usual. The document names your
+instance's external URL, so **Settings → System → Network** must have an
+external HTTPS address set, which any remotely reachable instance already has.
+
 > Your instance must be reachable over HTTPS for a cloud-hosted client to reach
 > it — Nabu Casa, a reverse proxy, or a Cloudflare tunnel. Nothing extra is
 > needed for a client on the same network.
@@ -346,6 +372,14 @@ Open `https://your-home-assistant/api/steward/mcp` in a browser. A `401
 Unauthorized` is correct: the endpoint requires a login, and seeing it proves
 the integration is loaded and reachable. A `404` means the integration is not
 set up; anything else is a networking or proxy problem.
+
+**"Invalid redirect URI" after logging in**
+Claude Code's default client registers a portless loopback callback that Home
+Assistant will not match. Use the `--client-id` and `--callback-port` form
+under [Claude Code: pin the callback port](#claude-code-pin-the-callback-port).
+Confirm `https://your-home-assistant/api/steward/oauth-client.json` returns a
+JSON document whose `client_id` is that same URL; if it returns a 503, set an
+external URL under **Settings → System → Network**.
 
 **The browser login never appears**
 The client needs to reach your instance over HTTPS with a valid certificate, and

@@ -32,6 +32,7 @@ from .const import (
     MCP_PATH,
     PARSE_ERROR,
 )
+from .oauth_client import ClientMetadataView
 from .protocol import MCPProtocol, json_rpc_error
 from .rate_limit import RateLimiter
 
@@ -43,8 +44,9 @@ MAX_BATCH = 50
 
 
 def async_register_http(hass: HomeAssistant) -> None:
-    """Register the MCP view."""
+    """Register the MCP view and the OAuth client metadata document."""
     hass.http.register_view(MCPView())
+    hass.http.register_view(ClientMetadataView())
 
 
 def _limiter(hass: HomeAssistant) -> RateLimiter:
