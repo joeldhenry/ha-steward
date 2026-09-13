@@ -115,7 +115,7 @@ class MCPView(HomeAssistantView):
                 headers={"Retry-After": str(int(retry_after) + 1)},
             )
 
-        protocol = MCPProtocol(hass, user)
+        protocol = MCPProtocol(hass, user, request.get(KEY_HASS_REFRESH_TOKEN_ID))
         responses: list[dict[str, Any]] = []
         for message in messages:
             if (response := await protocol.dispatch(message)) is not None:

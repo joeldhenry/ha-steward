@@ -327,26 +327,34 @@ user's profile under security, and revoking it there disconnects the client.
 ## Tools
 
 - Conventions: `ha_audit`
-- Entities: `ha_get_states`, `ha_get_state`, `ha_call_service`, `ha_get_services`
-- Registries: `ha_get_devices`, `ha_update_device`, `ha_get_entity_registry`, `ha_update_entity`,
-  `ha_get_areas`, `ha_manage_area`, `ha_get_floors`, `ha_create_floor`, `ha_get_labels`
+- Entities: `ha_get_states` (filter by domain, area, device, label or name),
+  `ha_get_state`, `ha_describe_entity`, `ha_call_service`, `ha_get_services`
+- Registries: `ha_get_devices`, `ha_update_device`, `ha_remove_device`,
+  `ha_get_entity_registry`, `ha_update_entity`, `ha_remove_entity`, `ha_get_areas`,
+  `ha_manage_area`, `ha_get_floors`, `ha_create_floor`, `ha_get_labels`,
+  `ha_manage_label`
 - Configuration: `ha_config` reads and writes automation, script and scene
   config, meaning the triggers, conditions and actions themselves. Home Assistant
   validates before saving and reloads the domain afterwards, so a bad config is
-  rejected before it is written.
+  rejected before it is written. `ha_validate_config` checks a block of triggers,
+  conditions or actions without saving; `ha_check_config` validates the whole
+  YAML configuration.
+- Helpers: `ha_helper` for input_boolean, input_number, input_select,
+  input_text, input_datetime, counter, timer and schedule
+- Dashboards: `ha_dashboard` lists, reads, saves, creates and deletes Lovelace
+  dashboards and lists custom resources
 - Running things: `ha_get_automations`, `ha_toggle_automation`,
-  `ha_trigger_automation`, `ha_run_script`, `ha_activate_scene`
+  `ha_trigger_automation`, `ha_run_script`, `ha_activate_scene`, `ha_assist`
 - Diagnostics: `ha_trace`, `ha_error_log`, `ha_history`, `ha_statistics`,
-  `ha_logbook`
+  `ha_logbook`, `ha_repairs`
 - System: `ha_get_config`, `ha_render_template`, `ha_get_config_entries`,
+  `ha_config_entry` (reload, unload, set up, remove), `ha_energy`, `ha_backup`,
   `ha_reload`, `ha_restart`
 
-### Why `ha_trace` matters
-
-An automation that "didn't fire" usually did fire, and failed a condition. A
-trace is the step-by-step record of a past run: which trigger fired, which
-condition passed or failed, what each step did. The answer comes from evidence
-instead of from re-reading the YAML and guessing.
+Anything Home Assistant exposes only as a WebSocket command (helpers, dashboards,
+energy preferences, backups, repairs, Assist) runs through the same command
+handlers the frontend uses, with the caller's own account, so validation and
+admin checks are Home Assistant's rather than a second copy.
 
 Output is bounded by default. `ha_get_states` returns identifying fields with
 attributes opt-in, `ha_get_services` filters by domain, and `ha_history` drops

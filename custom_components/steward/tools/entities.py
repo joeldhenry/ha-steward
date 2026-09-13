@@ -19,6 +19,9 @@ from ._schema import Arg, tool
     {
         "domain": Arg("string", "Filter by domain, e.g. 'light', 'sensor'"),
         "search": Arg("string", "Case-insensitive substring matched against entity_id and name"),
+        "area_id": Arg("string", "Only entities in this area, including those inheriting it from their device"),
+        "device_id": Arg("string", "Only entities on this device"),
+        "label_id": Arg("string", "Only entities carrying this label"),
         "include_attributes": Arg(
             "boolean", "Include every attribute. Combine with a filter.", default=False
         ),
@@ -28,8 +31,28 @@ async def get_states(hass: HomeAssistant, policy: Policy, args: dict[str, Any]) 
     domain = args.get("domain")
     search = (args.get("search") or "").lower()
 
+    # Area, device and label live in the registries, not on the state.
+    allowed: set[str] | None = None
+    if any(args.get(k) for k in ("area_id", "device_id", "label_id")):
+        from homeassistant.helpers import device_registry as dr, entity_registry as er
+
+        entities, devices = er.async_get(hass), dr.async_get(hass)
+        allowed = set()
+        for entry in entities.entities.values():
+            if args.get("device_id") and entry.device_id != args["device_id"]:
+                continue
+            if args.get("label_id") and args["label_id"] not in entry.labels:
+                continue
+            if args.get("area_id"):
+                device = devices.async_get(entry.device_id) if entry.device_id else None
+                if (entry.area_id or (device.area_id if device else None)) != args["area_id"]:
+                    continue
+            allowed.add(entry.entity_id)
+
     results = []
     for state in hass.states.async_all(domain) if domain else hass.states.async_all():
+        if allowed is not None and state.entity_id not in allowed:
+            continue
         # Non-admins may have a per-entity read policy; honour it.
         if not policy.can_read_entity(state.entity_id):
             continue

@@ -79,8 +79,10 @@ def _load() -> dict[str, Tool]:
         audit,
         automations,
         config,
+        dashboards,
         diagnostics,
         entities,
+        helpers,
         registry,
         system,
     )

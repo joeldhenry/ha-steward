@@ -42,14 +42,17 @@ def json_rpc_result(request_id: Any, result: Any) -> dict[str, Any]:
 class MCPProtocol:
     """Dispatches one client's JSON-RPC calls."""
 
-    def __init__(self, hass: HomeAssistant, user: User) -> None:
+    def __init__(
+        self, hass: HomeAssistant, user: User, refresh_token_id: str | None = None
+    ) -> None:
         self.hass = hass
         self.user = user
+        self.refresh_token_id = refresh_token_id
 
     @property
     def _policy(self) -> Policy:
         entries = self.hass.config_entries.async_entries(DOMAIN)
-        return Policy(entries[0] if entries else None, self.user)
+        return Policy(entries[0] if entries else None, self.user, self.refresh_token_id)
 
     async def dispatch(self, message: dict[str, Any]) -> dict[str, Any] | None:
         """Handle one message. Returns None for notifications."""
@@ -160,6 +163,8 @@ class MCPProtocol:
             result = await tool.handler(self.hass, policy, arguments)
         except NotPermitted:
             raise
+        except ValueError as err:
+            return _tool_error(str(err))
         except Exception as err:  # noqa: BLE001 - report to the model, not the log alone
             _LOGGER.exception("Tool %s failed", tool.name)
             return _tool_error(f"{type(err).__name__}: {err}")

@@ -16,7 +16,8 @@ from enum import StrEnum
 from homeassistant.auth.models import User
 from homeassistant.auth.permissions.const import POLICY_READ
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.core import Context
+from homeassistant.core import Context, HomeAssistant
+from typing import Any
 
 from .const import (
     CONF_ALLOW_DESTRUCTIVE,
@@ -56,8 +57,11 @@ class NotPermitted(Exception):
 class Policy:
     """Effective permissions for one request."""
 
-    def __init__(self, entry: ConfigEntry | None, user: User) -> None:
+    def __init__(
+        self, entry: ConfigEntry | None, user: User, refresh_token_id: str | None = None
+    ) -> None:
         options = entry.options if entry else {}
+        self._refresh_token_id = refresh_token_id
         self._allow_write = options.get(CONF_ALLOW_WRITE, DEFAULT_ALLOW_WRITE)
         self._allow_destructive = options.get(
             CONF_ALLOW_DESTRUCTIVE, DEFAULT_ALLOW_DESTRUCTIVE
@@ -68,6 +72,17 @@ class Policy:
     @property
     def user(self) -> User:
         return self._user
+
+    async def async_refresh_token(self, hass: HomeAssistant) -> Any:
+        """The caller's refresh token, for commands run through the WebSocket bridge."""
+        from .ws_bridge import stand_in_refresh_token
+
+        if self._refresh_token_id:
+            token = hass.auth.async_get_refresh_token(self._refresh_token_id)
+            if token is not None:
+                return token
+        tokens = getattr(self._user, "refresh_tokens", None) or {}
+        return next(iter(tokens.values()), None) or stand_in_refresh_token()
 
     @property
     def context(self) -> Context:
