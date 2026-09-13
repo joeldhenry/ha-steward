@@ -163,6 +163,50 @@ async def update_entity(hass: HomeAssistant, _policy: Policy, args: dict[str, An
 
 
 @tool(
+    "ha_update_device",
+    "Update a device's registry entry: assign it to an area, rename it, or disable it. "
+    "Every entity on the device inherits the area unless it carries its own override, "
+    "so this is the right fix when a whole device is in the wrong room or none. Pass "
+    "an empty area_id to remove the device from its area.",
+    Access.WRITE,
+    {
+        "device_id": Arg("string", "Device ID from ha_get_devices", required=True),
+        "area_id": Arg(
+            "string",
+            "Area to place the device in. An empty string clears it, which is correct "
+            "for service devices such as weather or fire-danger feeds.",
+        ),
+        "name": Arg("string", "Name shown for the device, overriding the integration's"),
+        "disabled": Arg("boolean", "Disable the device and all its entities"),
+    },
+)
+async def update_device(hass: HomeAssistant, _policy: Policy, args: dict[str, Any]) -> Any:
+    devices = dr.async_get(hass)
+    device_id = args["device_id"]
+    if devices.async_get(device_id) is None:
+        raise ValueError(f"No such device: {device_id}")
+
+    changes: dict[str, Any] = {}
+    if (area := args.get("area_id")) is not None:
+        changes["area_id"] = area or None
+    if args.get("name") is not None:
+        changes["name_by_user"] = args["name"] or None
+    if args.get("disabled") is not None:
+        changes["disabled_by"] = dr.DeviceEntryDisabler.USER if args["disabled"] else None
+    if not changes:
+        raise ValueError("Nothing to update; pass at least one field to change.")
+
+    updated = devices.async_update_device(device_id, **changes)
+    return {
+        "device_id": updated.id,
+        "name": updated.name_by_user or updated.name,
+        "area_id": updated.area_id,
+        "disabled": bool(updated.disabled_by),
+        "changed": sorted(changes),
+    }
+
+
+@tool(
     "ha_get_areas",
     "List areas with their floor, aliases and the number of devices and entities in each.",
     Access.SENSITIVE,

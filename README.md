@@ -329,7 +329,7 @@ user's profile under security, and revoking it there disconnects the client.
 
 - Conventions: `ha_audit`
 - Entities: `ha_get_states`, `ha_get_state`, `ha_call_service`, `ha_get_services`
-- Registries: `ha_get_devices`, `ha_get_entity_registry`, `ha_update_entity`,
+- Registries: `ha_get_devices`, `ha_update_device`, `ha_get_entity_registry`, `ha_update_entity`,
   `ha_get_areas`, `ha_manage_area`, `ha_get_floors`, `ha_create_floor`, `ha_get_labels`
 - Configuration: `ha_config` reads and writes automation, script and scene
   config, meaning the triggers, conditions and actions themselves. Home Assistant

@@ -119,6 +119,17 @@ async def main():
     assert wrong_area(after) == wrong_area(before) - 1, "fix did not clear the finding"
     print("-> finding cleared\n")
 
+    print("=== ha_update_device ===")
+    moved = await call(admin, "ha_update_device", {"device_id": dev.id, "area_id": courtyard.id})
+    print("move device ->", moved["content"][0]["text"].replace(chr(10), " ")[:120])
+    reg = json.loads((await call(admin, "ha_get_entity_registry", {"device_id": dev.id}))["content"][0]["text"])
+    inherited = [e for e in reg if not e["area_is_override"]]
+    assert inherited and all(e["area_id"] == courtyard.id for e in inherited), "entities did not inherit the device area"
+    print(f"   -> {len(inherited)} non-overridden entities now inherit courtyard")
+    cleared = await call(admin, "ha_update_device", {"device_id": dev.id, "area_id": ""})
+    assert '"area_id": null' in cleared["content"][0]["text"], cleared
+    print("   -> empty area_id clears the device's area\n")
+
     print("=== permissions ===")
     guest_tools = await guest.dispatch({"jsonrpc": "2.0", "id": 1, "method": "tools/list"})
     guest_names = {t["name"] for t in guest_tools["result"]["tools"]}
