@@ -1,0 +1,48 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Steward",
+        "description": "Exposes an MCP endpoint at /api/steward. AI clients authenticate through Home Assistant's own login, so there is no token to copy.",
+        "data": {
+          "allow_write": "Allow write operations",
+          "allow_destructive": "Allow destructive operations",
+          "require_admin": "Require an administrator account",
+          "rate_limit": "Requests per window",
+          "rate_window": "Rate limit window (seconds)"
+        },
+        "data_description": {
+          "allow_write": "Changing states, calling services, and editing the registries. Turn this off for an audit-only connection.",
+          "allow_destructive": "Deleting configuration and restarting Home Assistant.",
+          "require_admin": "Non-administrators get read-only access regardless of the settings above.",
+          "rate_limit": "Maximum requests one client may make per window. A model retrying in a loop can otherwise saturate the instance.",
+          "rate_window": "Length of the sliding window, in seconds."
+        }
+      }
+    },
+    "abort": {
+      "already_configured": "Steward is already set up."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Steward permissions",
+        "data": {
+          "allow_write": "Allow write operations",
+          "allow_destructive": "Allow destructive operations",
+          "require_admin": "Require an administrator account",
+          "rate_limit": "Requests per window",
+          "rate_window": "Rate limit window (seconds)"
+        },
+        "data_description": {
+          "allow_write": "Changing states, calling services, and editing the registries. Turn this off for an audit-only connection.",
+          "allow_destructive": "Deleting configuration and restarting Home Assistant.",
+          "require_admin": "Non-administrators get read-only access regardless of the settings above.",
+          "rate_limit": "Maximum requests one client may make per window. A model retrying in a loop can otherwise saturate the instance.",
+          "rate_window": "Length of the sliding window, in seconds."
+        }
+      }
+    }
+  }
+}

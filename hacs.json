@@ -1,0 +1,6 @@
+{
+  "name": "Steward - Home Assistant MCP Plugin",
+  "content_in_root": false,
+  "homeassistant": "2025.6.0",
+  "zip_release": false
+}
