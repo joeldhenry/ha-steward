@@ -342,10 +342,10 @@ Home Assistant was not restarted after the HACS download. Restart, then hard
 refresh the browser.
 
 **The client says it cannot reach the server**
-Open `https://your-home-assistant/api/steward/mcp` in a browser. A `405 Method
-Not Allowed` is correct: the endpoint only accepts POST, and seeing it proves
-the integration is loaded and reachable. A `404` means the integration is not set
-up; anything else is a networking or proxy problem.
+Open `https://your-home-assistant/api/steward/mcp` in a browser. A `401
+Unauthorized` is correct: the endpoint requires a login, and seeing it proves
+the integration is loaded and reachable. A `404` means the integration is not
+set up; anything else is a networking or proxy problem.
 
 **The browser login never appears**
 The client needs to reach your instance over HTTPS with a valid certificate, and
