@@ -30,13 +30,21 @@ jobs:
           # only applies to the HACS default store. This is a custom repository.
           ignore: brands
 
-  syntax:
-    name: Python syntax
+  tests:
+    name: Import and test against Home Assistant
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.13"
-      - name: Compile every module
-        run: python -m compileall -q custom_components/steward
+      - name: Install Home Assistant
+        run: pip install --quiet homeassistant
+      - name: Import the integration
+        # compileall passes a module that fails at import time; importing does not.
+        run: python -c "import custom_components.steward, custom_components.steward.config_flow, custom_components.steward.tools"
+      - name: Run the suites
+        run: |
+          for t in tests/test_integration.py tests/test_config_tools.py tests/test_audit.py tests/test_oauth_client.py; do
+            echo "== $t"; python -u "$t" > out.log 2>&1 || { tail -40 out.log; exit 1; }
+          done

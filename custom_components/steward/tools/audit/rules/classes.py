@@ -6,6 +6,7 @@ dashboard, and whether long-term statistics are kept at all.
 
 from __future__ import annotations
 
+import re
 from collections.abc import Iterator
 
 from ..context import AuditContext
@@ -98,8 +99,6 @@ def missing_device_class(ctx: AuditContext) -> Iterator[Finding]:
     tags=("types", "dashboard", "voice"),
 )
 def switch_as_x(ctx: AuditContext) -> Iterator[Finding]:
-    import re
-
     hints = (
         ("light", re.compile(r"\b(light|lamp|globe|downlight|sconce|chandelier)\b", re.I)),
         ("fan", re.compile(r"\b(fan|extractor|exhaust)\b", re.I)),
