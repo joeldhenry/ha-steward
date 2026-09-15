@@ -73,6 +73,26 @@ remote servers:
 Access is tied to that Home Assistant account, shows up in the user's token
 list, and is revoked by revoking it there.
 
+### claude.ai, Desktop, mobile and Cowork: use your own OAuth client
+
+Adding Steward as a custom connector in the hosted Claude surfaces can fail
+with "Automatic client registration isn't supported by Home Assistant", then
+ask you to add an OAuth client ID by hand. This happens because Home
+Assistant's OAuth metadata does not advertise `token_endpoint_auth_methods_supported`,
+one of two fields Claude checks before it will pick client ID metadata over
+dynamic registration; without it, Claude tries dynamic registration first, and
+Home Assistant does not implement that.
+
+Steward's own metadata document already covers this. In the connector dialog:
+
+1. Choose **Use your own OAuth client**
+2. Enter `https://your-home-assistant/api/steward/oauth-client.json` as the OAuth client ID
+3. Leave the client secret blank
+4. Save, then log in to Home Assistant and approve
+
+The client ID is the same document Claude Code uses, it lists the fixed
+callback the hosted surfaces need alongside the loopback ports.
+
 ### Claude Code: pin the callback port
 
 Claude Code identifies itself with a client metadata document that registers

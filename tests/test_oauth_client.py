@@ -52,6 +52,10 @@ async def main():
         assert "http://localhost:53394/callback" not in accepted
         print("ok   pinned port matches; a random port still would not")
 
+        # What claude.ai web/Desktop/mobile/Cowork send, unconditionally, no port to pin.
+        assert "https://claude.ai/api/mcp/auth_callback" in accepted
+        print("ok   the hosted Claude surfaces' fixed callback is accepted too")
+
         assert v._is_valid_metadata_client_id(url)
         assert all(v._is_valid_metadata_redirect_uri(u) for u in accepted)
         assert len(body) < 4096, len(body)
