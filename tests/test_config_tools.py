@@ -1,4 +1,5 @@
 """Exercise the config CRUD and diagnostics tools against a real HA core."""
+import os
 import asyncio, json, sys, tempfile, pathlib
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 
@@ -7,6 +8,8 @@ from homeassistant.config_entries import ConfigEntries, ConfigEntry, ConfigEntry
 from homeassistant.helpers import (area_registry as ar, device_registry as dr,
                                    entity_registry as er, floor_registry as fr,
                                    label_registry as lr)
+from homeassistant.helpers import frame
+from homeassistant.helpers import condition as condition_helper, trigger as trigger_helper
 from homeassistant.setup import async_setup_component
 from homeassistant import loader
 
@@ -32,6 +35,19 @@ async def _body(hass):
     hass.config.skip_pip = True
     loader.async_setup(hass)
     hass.config_entries = ConfigEntries(hass, {})
+    # 2026.9 keeps the trigger and condition platform registries in
+    # hass.data, populated during core setup that a bare harness skips.
+    for helper in (trigger_helper, condition_helper):
+        if hasattr(helper, "async_setup"):
+            await helper.async_setup(hass)
+    # 2026.9 requires the frame helper before integrations set up.
+    if hasattr(frame, "async_setup"):
+        frame.async_setup(hass)
+    # 2026.9 split registry setup from loading; older releases only have
+    # the load half, so call setup where it exists.
+    for mod in (ar, dr, er, fr, lr):
+        if hasattr(mod, "async_setup"):
+            mod.async_setup(hass)
     for mod in (ar, dr, er, fr, lr):
         await mod.async_load(hass)
     await hass.async_start()
@@ -196,6 +212,36 @@ async def _body(hass):
     assert [e["entity_id"] for e in filtered] == [porch.entity_id], filtered
     print("   -> label filter returns exactly the labelled entity")
 
+    print("\n=== error log keeps tracebacks attached to their record ===")
+    pathlib.Path(CFG, "home-assistant.log").write_text(
+        "2026-09-16 18:03:40.001 INFO (MainThread) [homeassistant.core] Starting\n"
+        "2026-09-16 18:03:41.881 ERROR (MainThread) [custom_components.steward.protocol] Tool ha_backup failed\n"
+        "Traceback (most recent call last):\n"
+        '  File "ws_bridge.py", line 78, in ws_call\n'
+        "    message = schema(message)\n"
+        "TypeError: 'bool' object is not callable\n"
+        "2026-09-16 18:03:42.100 INFO (MainThread) [homeassistant.core] Still going\n"
+    )
+    log = json.loads(show("ha_error_log errors_only", await call("ha_error_log", {"errors_only": True})))
+    assert "Traceback (most recent call last):" in log["lines"], log
+    assert "'bool' object is not callable" in log["lines"], log
+    assert "Still going" not in log["lines"], log
+    print("   -> errors_only keeps the stack under the message and drops unrelated records")
+    filtered = json.loads(show("ha_error_log filter", await call("ha_error_log", {"filter": "ws_bridge"})))
+    assert "Tool ha_backup failed" in filtered["lines"], filtered
+    print("   -> filtering on a word that only appears in the stack returns the whole record")
+
+    print("\n=== entity registry stays inside the response cap ===")
+    summary = json.loads(show("ha_get_entity_registry summary_only",
+                              await call("ha_get_entity_registry", {"summary_only": True})))
+    assert "by_platform" in summary and "total" in summary, summary
+    assert isinstance(summary["total"], int)
+    print("   -> summary_only returns counts, not entries")
+    capped = json.loads(show("ha_get_entity_registry limit=1", await call("ha_get_entity_registry", {"limit": 1})))
+    if isinstance(capped, dict):
+        assert capped["returned"] == 1 and "more match" in capped["note"], capped
+        print("   -> over the limit, the tool says how to narrow instead of truncating silently")
+
     print("\n=== describe, validate, check_config, repairs ===")
     desc = json.loads(show("ha_describe_entity", await call("ha_describe_entity", {"entity_id": porch.entity_id})))
     assert desc["supported_features"] == ["EFFECT", "FLASH", "TRANSITION"], desc["supported_features"]
@@ -228,3 +274,9 @@ async def _body(hass):
 
 
 asyncio.run(main())
+
+# Everything above has passed by this point. Tearing down Home Assistant's
+# threads can crash the interpreter itself on some builds, which would turn a
+# green run red, so leave before that can happen.
+sys.stdout.flush()
+os._exit(0)

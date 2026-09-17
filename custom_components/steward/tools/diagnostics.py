@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import re
+from dataclasses import dataclass
 from datetime import timedelta
 from functools import partial
 from typing import Any
@@ -11,6 +13,27 @@ from homeassistant.util import dt as dt_util
 
 from ..permissions import Access, Policy
 from ._schema import Arg, tool
+
+# A log record starts with a timestamp. Anything else is a continuation of the
+# record above it, which is how a traceback reaches the log.
+_RECORD_START = re.compile(r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}")
+
+
+@dataclass(slots=True)
+class _Record:
+    header: str
+    text: str
+
+
+def _records(lines: list[str]) -> list[_Record]:
+    """Group log lines so a message keeps the traceback printed beneath it."""
+    grouped: list[list[str]] = []
+    for line in lines:
+        if not grouped or _RECORD_START.match(line):
+            grouped.append([line])
+        else:
+            grouped[-1].append(line)
+    return [_Record(header=block[0], text="\n".join(block)) for block in grouped]
 
 
 def _require(hass: HomeAssistant, component: str) -> None:
@@ -202,17 +225,22 @@ async def error_log(hass: HomeAssistant, _policy: Policy, args: dict[str, Any]) 
     if not all_lines:
         return {"lines": "", "note": f"No log file at {path}. Logging may be going to the console."}
 
-    matched = all_lines
+    # Filter whole records, not lines. A traceback's frames carry neither the
+    # level nor the logger name, so filtering line by line returns the message
+    # and drops the stack under it, which is the half that says what broke.
+    records = _records(all_lines)
+    matched = records
     if args.get("errors_only"):
-        matched = [line for line in matched if "ERROR" in line or "CRITICAL" in line]
+        matched = [r for r in matched if "ERROR" in r.header or "CRITICAL" in r.header]
     if needle := args.get("filter"):
-        matched = [line for line in matched if needle.lower() in line.lower()]
+        matched = [r for r in matched if needle.lower() in r.text.lower()]
 
     limit = args.get("lines", 200)
+    out_lines = "\n".join(r.text for r in matched).splitlines()
     return {
-        "lines": "\n".join(matched[-limit:]),
-        "returned_lines": min(len(matched), limit),
-        "matched_lines": len(matched),
+        "lines": "\n".join(out_lines[-limit:]),
+        "returned_lines": min(len(out_lines), limit),
+        "matched_records": len(matched),
         "total_lines": len(all_lines),
     }
 

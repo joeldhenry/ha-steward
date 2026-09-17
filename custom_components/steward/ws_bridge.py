@@ -33,6 +33,23 @@ _LOGGER = logging.getLogger(__name__)
 COMMAND_TIMEOUT = 30
 
 
+def _takes_remote() -> bool:
+    """Whether the installed ActiveConnection wants a `remote` argument.
+
+    2026.9 added it as required, the caller's address, which Home Assistant
+    keeps for logging. Earlier releases do not accept it and this integration
+    supports both, so ask the installed class rather than pinning a version.
+    Parameter names come off the code object because the signature's
+    annotations name types that only exist under TYPE_CHECKING, which
+    inspect.signature tries to resolve and fails on.
+    """
+    code = ActiveConnection.__init__.__code__
+    return "remote" in code.co_varnames[: code.co_argcount]
+
+
+_TAKES_REMOTE = _takes_remote()
+
+
 class CommandFailed(Exception):
     """The command ran and Home Assistant answered with an error."""
 
@@ -61,11 +78,22 @@ async def ws_call(
         )
     handler, schema = registry[command]
 
-    message = {"id": 1, "type": command, **payload}
-    try:
-        message = schema(message)
-    except vol.Invalid as err:
-        raise ValueError(f"Invalid arguments for {command}: {err}") from err
+    message: dict[str, Any] = {"id": 1, "type": command, **payload}
+
+    # A command whose schema is only {"type": ...} is registered with the
+    # schema set to False. Home Assistant then dispatches it unvalidated and
+    # rejects any key beyond id and type, so mirror both halves rather than
+    # calling False as though it were a validator.
+    if schema is False:
+        if payload:
+            raise ValueError(
+                f"'{command}' takes no arguments, got: {', '.join(sorted(payload))}"
+            )
+    else:
+        try:
+            message = schema(message)
+        except vol.Invalid as err:
+            raise ValueError(f"Invalid arguments for {command}: {err}") from err
 
     loop = asyncio.get_running_loop()
     reply: asyncio.Future[dict[str, Any]] = loop.create_future()
@@ -75,7 +103,12 @@ async def ws_call(
             reply.set_result(_decode(raw))
 
     refresh_token = await policy.async_refresh_token(hass)
-    connection = ActiveConnection(_LOGGER, hass, capture, policy.user, refresh_token)
+    connection_args = (_LOGGER, hass, capture, policy.user, refresh_token)
+    connection = (
+        ActiveConnection(*connection_args, remote=None)
+        if _TAKES_REMOTE
+        else ActiveConnection(*connection_args)
+    )
 
     try:
         handler(hass, connection, message)

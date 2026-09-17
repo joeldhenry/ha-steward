@@ -72,13 +72,23 @@ async def get_devices(hass: HomeAssistant, _policy: Policy, args: dict[str, Any]
         "device_id": Arg("string", "Only entities on this device"),
         "area_id": Arg("string", "Only entities in this area"),
         "platform": Arg("string", "Only entities from this integration, e.g. 'zha'"),
+        "disabled": Arg("boolean", "Only disabled entities, or only enabled ones"),
+        "hidden": Arg("boolean", "Only hidden entities, or only visible ones"),
+        "summary_only": Arg(
+            "boolean", "Return counts per platform, domain and area instead of entries",
+            default=False,
+        ),
+        "limit": Arg(
+            "integer", "Maximum entries to return, newest registrations last",
+            default=500, minimum=1, maximum=5000,
+        ),
     },
 )
 async def get_entity_registry(hass: HomeAssistant, _policy: Policy, args: dict[str, Any]) -> Any:
     entities = er.async_get(hass)
     devices = dr.async_get(hass)
 
-    results = []
+    matched = []
     for entry in entities.entities.values():
         if args.get("domain") and entry.domain != args["domain"]:
             continue
@@ -86,26 +96,68 @@ async def get_entity_registry(hass: HomeAssistant, _policy: Policy, args: dict[s
             continue
         if args.get("platform") and entry.platform != args["platform"]:
             continue
+        if args.get("disabled") is not None and bool(entry.disabled_by) != args["disabled"]:
+            continue
+        if args.get("hidden") is not None and bool(entry.hidden_by) != args["hidden"]:
+            continue
 
         device = devices.async_get(entry.device_id) if entry.device_id else None
         effective_area = entry.area_id or (device.area_id if device else None)
         if args.get("area_id") and effective_area != args["area_id"]:
             continue
 
-        results.append(
-            {
-                "entity_id": entry.entity_id,
-                "name": entry.name or entry.original_name,
-                "platform": entry.platform,
-                "device_id": entry.device_id,
-                "area_id": effective_area,
-                "area_is_override": entry.area_id is not None,
-                "entity_category": entry.entity_category,
-                "disabled": bool(entry.disabled_by),
-                "hidden": bool(entry.hidden_by),
-            }
-        )
+        matched.append((entry, effective_area))
+
+    if args.get("summary_only"):
+        return {
+            "total": len(matched),
+            "by_platform": _tally(platform for entry, _ in matched for platform in [entry.platform]),
+            "by_domain": _tally(entry.domain for entry, _ in matched),
+            "by_area": _tally((area or "(none)") for _, area in matched),
+            "disabled": sum(1 for entry, _ in matched if entry.disabled_by),
+            "hidden": sum(1 for entry, _ in matched if entry.hidden_by),
+        }
+
+    limit = args.get("limit", 500)
+    results = []
+    for entry, effective_area in matched[:limit]:
+        # Only what differs from the default, so a thousand-entity instance
+        # stays inside the response cap.
+        row: dict[str, Any] = {"entity_id": entry.entity_id, "platform": entry.platform}
+        if name := (entry.name or entry.original_name):
+            row["name"] = name
+        if entry.device_id:
+            row["device_id"] = entry.device_id
+        if effective_area:
+            row["area_id"] = effective_area
+        if entry.area_id:
+            row["area_is_override"] = True
+        if entry.entity_category:
+            row["entity_category"] = entry.entity_category
+        if entry.disabled_by:
+            row["disabled"] = True
+        if entry.hidden_by:
+            row["hidden"] = True
+        results.append(row)
+
+    if len(matched) > limit:
+        return {
+            "entities": results,
+            "returned": len(results),
+            "matched": len(matched),
+            "note": (
+                f"{len(matched) - limit} more match. Narrow with domain, area_id, "
+                f"device_id or platform, raise limit, or use summary_only for counts."
+            ),
+        }
     return results
+
+
+def _tally(values: Any) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for value in values:
+        counts[str(value)] = counts.get(str(value), 0) + 1
+    return dict(sorted(counts.items(), key=lambda kv: -kv[1]))
 
 
 @tool(

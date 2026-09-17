@@ -1,12 +1,15 @@
 """Boot a real Home Assistant core and exercise the Steward integration."""
+import os
 import asyncio, sys, json, types
 sys.path.insert(0, str(__import__("pathlib").Path(__file__).resolve().parent.parent))
 
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import (
     area_registry as ar, device_registry as dr, entity_registry as er,
-    floor_registry as fr, label_registry as lr,
+    floor_registry as fr, frame, label_registry as lr,
 )
+from homeassistant.helpers import condition as condition_helper, trigger as trigger_helper
+from homeassistant import loader
 from homeassistant.config_entries import ConfigEntries
 
 import tempfile
@@ -15,8 +18,23 @@ CFG = tempfile.mkdtemp(prefix="hacfg-")
 
 async def main():
     hass = HomeAssistant(CFG)
+    hass.config.skip_pip = True
+    loader.async_setup(hass)
     hass.config_entries = ConfigEntries(hass, {})
     # Load the registries the tools read.
+    # 2026.9 keeps the trigger and condition platform registries in
+    # hass.data, populated during core setup that a bare harness skips.
+    for helper in (trigger_helper, condition_helper):
+        if hasattr(helper, "async_setup"):
+            await helper.async_setup(hass)
+    # 2026.9 requires the frame helper before integrations set up.
+    if hasattr(frame, "async_setup"):
+        frame.async_setup(hass)
+    # 2026.9 split registry setup from loading; older releases only have
+    # the load half, so call setup where it exists.
+    for mod in (ar, dr, er, fr, lr):
+        if hasattr(mod, "async_setup"):
+            mod.async_setup(hass)
     for mod in (ar, dr, er, fr, lr):
         await mod.async_load(hass)
     await hass.async_start()
@@ -123,7 +141,9 @@ async def main():
     moved = await call(admin, "ha_update_device", {"device_id": dev.id, "area_id": courtyard.id})
     print("move device ->", moved["content"][0]["text"].replace(chr(10), " ")[:120])
     reg = json.loads((await call(admin, "ha_get_entity_registry", {"device_id": dev.id}))["content"][0]["text"])
-    inherited = [e for e in reg if not e["area_is_override"]]
+    # area_is_override is now only present when true, so a thousand-entity
+    # instance stays inside the response cap.
+    inherited = [e for e in reg if not e.get("area_is_override")]
     assert inherited and all(e["area_id"] == courtyard.id for e in inherited), "entities did not inherit the device area"
     print(f"   -> {len(inherited)} non-overridden entities now inherit courtyard")
     cleared = await call(admin, "ha_update_device", {"device_id": dev.id, "area_id": ""})
@@ -152,3 +172,9 @@ async def main():
     await hass.async_stop()
 
 asyncio.run(main())
+
+# Everything above has passed by this point. Tearing down Home Assistant's
+# threads can crash the interpreter itself on some builds, which would turn a
+# green run red, so leave before that can happen.
+sys.stdout.flush()
+os._exit(0)

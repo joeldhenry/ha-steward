@@ -1,4 +1,5 @@
 """Exercise the config CRUD and diagnostics tools against a real HA core."""
+import os
 import asyncio, json, sys, tempfile, pathlib
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 
@@ -7,6 +8,8 @@ from homeassistant.config_entries import ConfigEntries, ConfigEntry, ConfigEntry
 from homeassistant.helpers import (area_registry as ar, device_registry as dr,
                                    entity_registry as er, floor_registry as fr,
                                    label_registry as lr)
+from homeassistant.helpers import frame
+from homeassistant.helpers import condition as condition_helper, trigger as trigger_helper
 from homeassistant.setup import async_setup_component
 from homeassistant import loader
 
@@ -25,6 +28,19 @@ async def main():
     hass.config.skip_pip = True
     loader.async_setup(hass)
     hass.config_entries = ConfigEntries(hass, {})
+    # 2026.9 keeps the trigger and condition platform registries in
+    # hass.data, populated during core setup that a bare harness skips.
+    for helper in (trigger_helper, condition_helper):
+        if hasattr(helper, "async_setup"):
+            await helper.async_setup(hass)
+    # 2026.9 requires the frame helper before integrations set up.
+    if hasattr(frame, "async_setup"):
+        frame.async_setup(hass)
+    # 2026.9 split registry setup from loading; older releases only have
+    # the load half, so call setup where it exists.
+    for mod in (ar, dr, er, fr, lr):
+        if hasattr(mod, "async_setup"):
+            mod.async_setup(hass)
     for mod in (ar, dr, er, fr, lr):
         await mod.async_load(hass)
     await hass.async_start()
@@ -167,3 +183,9 @@ async def main():
     await hass.async_stop()
 
 asyncio.run(main())
+
+# Everything above has passed by this point. Tearing down Home Assistant's
+# threads can crash the interpreter itself on some builds, which would turn a
+# green run red, so leave before that can happen.
+sys.stdout.flush()
+os._exit(0)

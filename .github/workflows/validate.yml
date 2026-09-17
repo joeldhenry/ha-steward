@@ -31,20 +31,35 @@ jobs:
           ignore: brands
 
   tests:
-    name: Import and test against Home Assistant
+    # Two versions on purpose. Current Home Assistant needs Python 3.14, so a
+    # 3.13 job silently installs an old release: that is how a break against
+    # 2026.9 shipped while CI stayed green. The older job still matters because
+    # this integration supports back to 2025.6, and the bridge adapts to the
+    # ActiveConnection signature of whichever version is installed.
+    name: HA ${{ matrix.label }} (Python ${{ matrix.python }})
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - python: "3.14"
+            label: current
+          - python: "3.13"
+            label: oldest supported
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.13"
+          python-version: "${{ matrix.python }}"
       - name: Install Home Assistant
         run: pip install --quiet homeassistant
+      - name: Report the version under test
+        run: python -c "import homeassistant.const as c; print('Home Assistant', c.__version__)"
       - name: Import the integration
         # compileall passes a module that fails at import time; importing does not.
         run: python -c "import custom_components.steward, custom_components.steward.config_flow, custom_components.steward.tools"
       - name: Run the suites
         run: |
-          for t in tests/test_integration.py tests/test_config_tools.py tests/test_audit.py tests/test_oauth_client.py; do
+          for t in tests/test_integration.py tests/test_ws_bridge.py tests/test_config_tools.py tests/test_audit.py tests/test_oauth_client.py; do
             echo "== $t"; python -u "$t" > out.log 2>&1 || { tail -40 out.log; exit 1; }
           done

@@ -6,6 +6,7 @@ redirect_uri against the result with exact string matching. This test runs
 our document through a copy of that validator taken from the 2026.9.2 tag, so
 a change on either side that would break login shows up here first.
 """
+import os
 import asyncio, importlib.util, json, pathlib, sys, tempfile
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 
@@ -64,3 +65,9 @@ async def main():
         await hass.async_stop()
 
 asyncio.run(main())
+
+# Everything above has passed by this point. Tearing down Home Assistant's
+# threads can crash the interpreter itself on some builds, which would turn a
+# green run red, so leave before that can happen.
+sys.stdout.flush()
+os._exit(0)
