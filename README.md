@@ -124,6 +124,27 @@ external HTTPS address set, which any remotely reachable instance already has.
 > it — Nabu Casa, a reverse proxy, or a Cloudflare tunnel. Nothing extra is
 > needed for a client on the same network.
 
+### Local instance over plain http: use a token
+
+The browser login needs Home Assistant to be reachable over HTTPS. An instance
+you only reach at `http://localhost:8123` or a LAN address can use a long-lived
+access token instead.
+
+1. In Home Assistant, open your profile, select **Security**, and create a token
+   under **Long-lived access tokens**.
+2. Add Steward to Claude Code with the token as a header:
+
+```bash
+claude mcp add --transport http steward http://localhost:8123/api/steward/mcp --header "Authorization: Bearer PASTE_TOKEN_HERE"
+```
+
+Replace `localhost:8123` with your instance's address if it runs on another
+machine. Any MCP client that can send a custom header works the same way.
+
+The token carries the full rights of the account that created it and lasts
+until you delete it from the same Security page. Plain http sends it
+unencrypted, so keep this to your own machine or home network.
+
 ---
 
 ## Permissions
@@ -365,6 +386,9 @@ https://homeassistant.example.com/api/steward/mcp
 
 **Any other MCP client**: give it the URL. Clients that support remote MCP
 servers discover everything else from it.
+
+**No HTTPS address**: see
+[Local instance over plain http](#local-instance-over-plain-http-use-a-token).
 
 Access is tied to the Home Assistant account that logged in. It appears in that
 user's profile under security, and revoking it there disconnects the client.
