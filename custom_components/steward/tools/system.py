@@ -10,6 +10,9 @@ from homeassistant.helpers import template as template_helper
 from ..permissions import Access, Policy
 from ._schema import Arg, tool
 
+MAX_TEMPLATE_CHARS = 20_000
+TEMPLATE_TIMEOUT_SECONDS = 5
+
 
 @tool(
     "ha_get_config",
@@ -41,8 +44,19 @@ async def get_config(hass: HomeAssistant, policy: Policy, _args: dict[str, Any])
     },
 )
 async def render_template(hass: HomeAssistant, _policy: Policy, args: dict[str, Any]) -> Any:
-    tpl = template_helper.Template(args["template"], hass)
-    return {"result": tpl.async_render(variables=args.get("variables") or {}, parse_result=True)}
+    source = args["template"]
+    if len(source) > MAX_TEMPLATE_CHARS:
+        raise ValueError(f"Template is longer than {MAX_TEMPLATE_CHARS:,} characters.")
+    variables = args.get("variables") or {}
+    tpl = template_helper.Template(source, hass)
+    # Rendering runs on the event loop, so a template with a long loop would
+    # stop Home Assistant for as long as it takes. This renders in a worker
+    # first and abandons it at the limit, as the frontend's template editor does.
+    if await tpl.async_render_will_timeout(TEMPLATE_TIMEOUT_SECONDS, variables):
+        raise ValueError(
+            f"Template did not finish rendering within {TEMPLATE_TIMEOUT_SECONDS} seconds."
+        )
+    return {"result": tpl.async_render(variables=variables, parse_result=True)}
 
 
 @tool(

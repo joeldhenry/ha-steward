@@ -32,7 +32,8 @@ from homeassistant.components.http import KEY_HASS, HomeAssistantView
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.network import NoURLAvailableError, get_url
 
-from .const import SERVER_TITLE
+from .const import DOMAIN, SERVER_TITLE
+from .permissions import active_entry
 
 CLIENT_METADATA_PATH = "/api/steward/oauth-client.json"
 
@@ -88,6 +89,9 @@ class ClientMetadataView(HomeAssistantView):
 
     async def get(self, request: web.Request) -> web.StreamResponse:
         hass = request.app[KEY_HASS]
+        # No client to describe once Steward is off; say nothing about the instance.
+        if active_entry(hass, DOMAIN) is None:
+            return web.Response(status=404)
         try:
             document = client_metadata_document(hass)
         except NoURLAvailableError:

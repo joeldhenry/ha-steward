@@ -32,6 +32,9 @@ class Tool:
     """Argument naming the operation, for tools that bundle several."""
     op_access: Mapping[str, Access] = field(default_factory=dict)
     """Access required per operation, e.g. {"get": READ, "delete": DESTRUCTIVE}."""
+    user_scoped: bool = False
+    """The handler only makes service calls under the caller's context, so Home
+    Assistant enforces that user's permissions. See Policy.allows."""
 
     def validate(self, arguments: dict[str, Any]) -> dict[str, Any]:
         return self.schema(arguments)
@@ -59,7 +62,10 @@ class Tool:
         """Operations this caller may not perform."""
         if not self.op_access:
             return []
-        return sorted(op for op, access in self.op_access.items() if not policy.allows(access))
+        return sorted(
+            op for op, access in self.op_access.items()
+            if not policy.allows(access, user_scoped=self.user_scoped)
+        )
 
 
 _REGISTRY: dict[str, Tool] = {}

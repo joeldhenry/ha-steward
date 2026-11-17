@@ -16,6 +16,8 @@ from homeassistant.helpers import (
     label_registry as lr,
 )
 
+from ... import registries
+
 # Domains a person targets by room, and which a voice assistant is asked about.
 # Area and duplication rules apply only to these, so a vacuum's per-room
 # settings and a phone's notify entity do not generate noise.
@@ -80,8 +82,9 @@ class AuditContext:
 
     @property
     def all_devices(self) -> list[dr.DeviceEntry]:
+        """Every device, child devices included."""
         if "devices" not in self._cache:
-            self._cache["devices"] = list(self.devices.devices.values())
+            self._cache["devices"] = registries.all_devices(self.devices)
         return self._cache["devices"]
 
     @property
@@ -90,7 +93,7 @@ class AuditContext:
         if "physical" not in self._cache:
             self._cache["physical"] = [
                 d for d in self.all_devices
-                if d.entry_type != dr.DeviceEntryType.SERVICE and not d.disabled_by
+                if not registries.is_service(self.devices, d) and not d.disabled_by
             ]
         return self._cache["physical"]
 
@@ -113,10 +116,15 @@ class AuditContext:
 
     def area_id_of(self, entry: er.RegistryEntry) -> str | None:
         """Effective area: the entity's override, else its device's."""
-        if entry.area_id:
-            return entry.area_id
-        device = self.device_of(entry)
-        return device.area_id if device else None
+        return registries.entity_area_id(self.devices, entry)
+
+    def device_area_id(self, device: dr.DeviceEntry | None) -> str | None:
+        """A device's area. A child device without one is in its parent's."""
+        return registries.device_area_id(self.devices, device)
+
+    def hardware_of(self, device: dr.DeviceEntry) -> dr.DeviceEntry:
+        """The entry carrying manufacturer and model: a child's parent, else itself."""
+        return registries.hardware_of(self.devices, device)
 
     def area_name(self, area_id: str | None) -> str:
         if not area_id:
@@ -144,8 +152,7 @@ class AuditContext:
         return entry.entity_category is None
 
     def is_service_entity(self, entry: er.RegistryEntry) -> bool:
-        device = self.device_of(entry)
-        return device is not None and device.entry_type == dr.DeviceEntryType.SERVICE
+        return registries.is_service(self.devices, self.device_of(entry))
 
     ROAMING_PLATFORMS = frozenset({"mobile_app"})
 

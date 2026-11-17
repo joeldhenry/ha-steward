@@ -10,6 +10,7 @@ from __future__ import annotations
 import re
 from collections.abc import Iterator
 
+from .... import registries
 from ..context import AuditContext
 from ..model import Finding, Severity, rule
 
@@ -91,7 +92,7 @@ def no_floors(ctx: AuditContext) -> Iterator[Finding]:
     tags=("areas", "dashboard"),
 )
 def empty_area(ctx: AuditContext) -> Iterator[Finding]:
-    occupied = {d.area_id for d in ctx.all_devices if d.area_id}
+    occupied = {ctx.device_area_id(d) for d in ctx.all_devices}
     occupied |= {ctx.area_id_of(e) for e in ctx.live_entities}
     for area in ctx.area_list:
         if area.id not in occupied:
@@ -113,6 +114,10 @@ def empty_area(ctx: AuditContext) -> Iterator[Finding]:
 )
 def device_no_area(ctx: AuditContext) -> Iterator[Finding]:
     for device in ctx.physical_devices:
+        # A child device without an area is in its parent's room, and when the
+        # parent has none either, the parent is the finding.
+        if registries.is_child(device):
+            continue
         if not device.area_id and not ctx.device_is_roaming(device):
             yield Finding(
                 device=ctx.device_name(device),
@@ -187,6 +192,25 @@ def wrong_area(ctx: AuditContext) -> Iterator[Finding]:
                 entity_id=entry.entity_id,
                 area=here,
                 detail=f'"{name}" names {named} but sits in {here}',
-                fix=f'Override this entity\'s area to "{elsewhere[0].name}" if that is '
-                    f"the room it affects",
+                fix=_wrong_area_fix(ctx, entry, elsewhere[0].name),
             )
+
+
+def _wrong_area_fix(ctx: AuditContext, entry, area_name: str) -> str:
+    """Name the change Home Assistant will accept for this entity.
+
+    From 2026.10 an entity with no name of its own stands for its device and
+    cannot hold an area override, so the room has to change on the device.
+    """
+    suffix = "if that is the room it affects"
+    if registries.accepts_own_area(entry):
+        return f'Override this entity\'s area to "{area_name}" {suffix}'
+    device = ctx.device_of(entry)
+    name = ctx.device_name(device)
+    if registries.is_child(device):
+        return f'Set the area of its device "{name}" to "{area_name}" {suffix}'
+    return (
+        f'This is the main entity of "{name}", so it takes the device\'s area: move '
+        f'the device to "{area_name}", or give the entity a name of its own and '
+        f"then override its area, {suffix}"
+    )

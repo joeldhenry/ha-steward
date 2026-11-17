@@ -18,6 +18,8 @@ from homeassistant.config import (
     SCRIPT_CONFIG_PATH,
 )
 from homeassistant.core import HomeAssistant
+from homeassistant.util import slugify
+from homeassistant.util.file import write_utf8_file_atomic
 from homeassistant.util.yaml import dump, load_yaml
 
 from ..permissions import Access, Policy
@@ -44,8 +46,9 @@ def _read(path: str) -> Any:
 def _write(path: str, data: Any) -> None:
     # Serialise before truncating, so a dump failure cannot empty the file.
     contents = dump(data)
-    with open(path, "w", encoding="utf8") as handle:
-        handle.write(contents)
+    # Written beside the target and renamed over it, so a crash part way
+    # through leaves the old file rather than a truncated one.
+    write_utf8_file_atomic(path, contents)
 
 
 async def _validate(hass: HomeAssistant, kind: str, config_id: str, config: dict[str, Any]) -> None:
@@ -140,6 +143,12 @@ async def config_tool(hass: HomeAssistant, _policy: Policy, args: dict[str, Any]
         raise ValueError(f"config_id is required to {action} a {kind}")
     if action == "create" and not config_id:
         config_id = str(int(time.time() * 1000))
+    # A script's id becomes its entity's object id and a key in scripts.yaml.
+    if kind == "script" and action == "create" and slugify(config_id) != config_id:
+        raise ValueError(
+            f"A script's config_id must be a slug such as '{slugify(config_id) or 'evening_routine'}': "
+            f"lowercase letters, digits and underscores."
+        )
 
     if action in ("create", "update"):
         config = args.get("config")

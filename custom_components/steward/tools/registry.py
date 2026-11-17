@@ -17,6 +17,7 @@ from homeassistant.helpers import (
     label_registry as lr,
 )
 
+from .. import registries
 from ..permissions import Access, Policy
 from ._schema import Arg, tool
 
@@ -24,7 +25,9 @@ from ._schema import Arg, tool
 @tool(
     "ha_get_devices",
     "List devices with manufacturer, model, firmware and area. Optionally filter by a "
-    "substring of the name, manufacturer or model.",
+    "substring of the name, manufacturer or model. A child device, such as one gang "
+    "of a wall switch, is listed with its parent_device_id; it takes its hardware "
+    "details and, unless it has an area of its own, its area from that parent.",
     Access.SENSITIVE,
     {
         "search": Arg("string", "Case-insensitive substring"),
@@ -37,27 +40,31 @@ async def get_devices(hass: HomeAssistant, _policy: Policy, args: dict[str, Any]
     search = (args.get("search") or "").lower()
 
     results = []
-    for device in devices.devices.values():
-        if args.get("area_id") and device.area_id != args["area_id"]:
+    for device in registries.all_devices(devices):
+        area_id = registries.device_area_id(devices, device)
+        if args.get("area_id") and area_id != args["area_id"]:
             continue
-        if args.get("without_area") and device.area_id:
+        if args.get("without_area") and area_id:
             continue
+        hardware = registries.hardware_of(devices, device)
         name = device.name_by_user or device.name or ""
-        haystack = f"{name} {device.manufacturer or ''} {device.model or ''}".lower()
+        haystack = f"{name} {hardware.manufacturer or ''} {hardware.model or ''}".lower()
         if search and search not in haystack:
             continue
-        results.append(
-            {
-                "id": device.id,
-                "name": name,
-                "manufacturer": device.manufacturer,
-                "model": device.model,
-                "sw_version": device.sw_version,
-                "area_id": device.area_id,
-                "is_service": device.entry_type == dr.DeviceEntryType.SERVICE,
-                "disabled": bool(device.disabled_by),
-            }
-        )
+        row = {
+            "id": device.id,
+            "name": name,
+            "manufacturer": hardware.manufacturer,
+            "model": hardware.model,
+            "sw_version": hardware.sw_version,
+            "area_id": area_id,
+            "is_service": hardware.entry_type == dr.DeviceEntryType.SERVICE,
+            "disabled": bool(device.disabled_by),
+        }
+        if registries.is_child(device):
+            row["parent_device_id"] = device.parent_device_id
+            row["area_is_inherited"] = not device.area_id
+        results.append(row)
     return results
 
 
@@ -101,8 +108,7 @@ async def get_entity_registry(hass: HomeAssistant, _policy: Policy, args: dict[s
         if args.get("hidden") is not None and bool(entry.hidden_by) != args["hidden"]:
             continue
 
-        device = devices.async_get(entry.device_id) if entry.device_id else None
-        effective_area = entry.area_id or (device.area_id if device else None)
+        effective_area = registries.entity_area_id(devices, entry)
         if args.get("area_id") and effective_area != args["area_id"]:
             continue
 
@@ -174,7 +180,10 @@ def _tally(values: Any) -> dict[str, int]:
         "area_id": Arg(
             "string",
             "Area to assign this entity to, overriding its device's area. Pass an empty "
-            "string to clear the override and inherit from the device again.",
+            "string to clear the override and inherit from the device again. Home "
+            "Assistant 2026.10 and later refuse an override on an entity that has no "
+            "name of its own, because that entity stands for its device: move the "
+            "device with ha_update_device, or pass a name in the same call.",
         ),
         "icon": Arg("string", "MDI icon, e.g. 'mdi:thermometer'"),
         "hidden": Arg("boolean", "Hide from the UI without disabling it"),
@@ -185,8 +194,20 @@ def _tally(values: Any) -> dict[str, int]:
 async def update_entity(hass: HomeAssistant, _policy: Policy, args: dict[str, Any]) -> Any:
     entities = er.async_get(hass)
     entity_id = args["entity_id"]
-    if entities.async_get(entity_id) is None:
+    if (current := entities.async_get(entity_id)) is None:
         raise ValueError(f"No such entity in the registry: {entity_id}")
+
+    # Home Assistant rejects this with a one-line error. Say which device to
+    # move instead, so the caller does not have to work the rule out.
+    if args.get("area_id") and not args.get("name") and not registries.accepts_own_area(current):
+        device = dr.async_get(hass).async_get(current.device_id)
+        device_name = (device.name_by_user or device.name) if device else current.device_id
+        raise ValueError(
+            f"{entity_id} has no name of its own, so it stands for its device "
+            f'"{device_name}" and cannot hold an area override. Move the device with '
+            f"ha_update_device (device_id {current.device_id}), or pass a name for the "
+            f"entity in the same call."
+        )
 
     changes: dict[str, Any] = {}
     if args.get("name") is not None:
@@ -222,7 +243,8 @@ async def update_entity(hass: HomeAssistant, _policy: Policy, args: dict[str, An
     "Update a device's registry entry: assign it to an area, rename it, or disable it. "
     "Every entity on the device inherits the area unless it carries its own override, "
     "so this is the right fix when a whole device is in the wrong room or none. Pass "
-    "an empty area_id to remove the device from its area.",
+    "an empty area_id to remove the device from its area. Works on child devices too; "
+    "a child with no area of its own goes back to its parent's.",
     Access.WRITE,
     {
         "device_id": Arg("string", "Device ID from ha_get_devices", required=True),
@@ -239,7 +261,7 @@ async def update_entity(hass: HomeAssistant, _policy: Policy, args: dict[str, An
 async def update_device(hass: HomeAssistant, _policy: Policy, args: dict[str, Any]) -> Any:
     devices = dr.async_get(hass)
     device_id = args["device_id"]
-    if devices.async_get(device_id) is None:
+    if (device := devices.async_get(device_id)) is None:
         raise ValueError(f"No such device: {device_id}")
 
     changes: dict[str, Any] = {}
@@ -254,14 +276,18 @@ async def update_device(hass: HomeAssistant, _policy: Policy, args: dict[str, An
     if not changes:
         raise ValueError("Nothing to update; pass at least one field to change.")
 
-    updated = devices.async_update_device(device_id, **changes)
-    return {
+    updated = registries.update_device(devices, device, **changes)
+    result = {
         "device_id": updated.id,
         "name": updated.name_by_user or updated.name,
         "area_id": updated.area_id,
         "disabled": bool(updated.disabled_by),
         "changed": sorted(changes),
     }
+    if registries.is_child(updated):
+        result["parent_device_id"] = updated.parent_device_id
+        result["effective_area_id"] = registries.device_area_id(devices, updated)
+    return result
 
 
 @tool(
@@ -275,14 +301,13 @@ async def get_areas(hass: HomeAssistant, _policy: Policy, _args: dict[str, Any])
     entities = er.async_get(hass)
 
     device_counts: dict[str, int] = {}
-    for device in devices.devices.values():
-        if device.area_id:
-            device_counts[device.area_id] = device_counts.get(device.area_id, 0) + 1
+    for device in registries.all_devices(devices):
+        if area_id := registries.device_area_id(devices, device):
+            device_counts[area_id] = device_counts.get(area_id, 0) + 1
 
     entity_counts: dict[str, int] = {}
     for entry in entities.entities.values():
-        device = devices.async_get(entry.device_id) if entry.device_id else None
-        area = entry.area_id or (device.area_id if device else None)
+        area = registries.entity_area_id(devices, entry)
         if area:
             entity_counts[area] = entity_counts.get(area, 0) + 1
 
@@ -463,7 +488,12 @@ async def remove_device(hass: HomeAssistant, _policy: Policy, args: dict[str, An
         raise ValueError(f"No such device: {args['device_id']}")
     name = device.name_by_user or device.name
     entities = er.async_get(hass)
-    removed = [e.entity_id for e in entities.entities.values() if e.device_id == device.id]
+    # Removing a device removes its child devices, and their entities with them.
+    doomed = {device.id} | {
+        child.id for child in registries.all_devices(devices)
+        if registries.is_child(child) and child.parent_device_id == device.id
+    }
+    removed = [e.entity_id for e in entities.entities.values() if e.device_id in doomed]
     devices.async_remove_device(device.id)
     return {"removed_device": name, "removed_entities": removed}
 
@@ -518,8 +548,10 @@ async def describe_entity(hass: HomeAssistant, policy: Policy, args: dict[str, A
         raise ValueError(f"No such entity: {entity_id}")
 
     domain = entity_id.split(".")[0]
-    device = dr.async_get(hass).async_get(entry.device_id) if entry and entry.device_id else None
-    area_id = (entry.area_id if entry else None) or (device.area_id if device else None)
+    devices = dr.async_get(hass)
+    device = devices.async_get(entry.device_id) if entry and entry.device_id else None
+    hardware = registries.hardware_of(devices, device) if device else None
+    area_id = (entry.area_id if entry else None) or registries.device_area_id(devices, device)
     area = ar.async_get(hass).async_get_area(area_id) if area_id else None
     floor = fr.async_get(hass).async_get_floor(area.floor_id) if area and area.floor_id else None
     features = state.attributes.get("supported_features") if state else None
@@ -541,15 +573,18 @@ async def describe_entity(hass: HomeAssistant, policy: Policy, args: dict[str, A
             "hidden": bool(entry.hidden_by) if entry else None,
             "area_is_override": bool(entry.area_id) if entry else None,
             "labels": sorted(entry.labels) if entry else [],
-            "aliases": sorted(entry.aliases) if entry else [],
+            "aliases": registries.aliases_of(hass, entry),
+            "accepts_area_override": registries.accepts_own_area(entry),
         } if entry else None,
         "device": {
             "id": device.id,
             "name": device.name_by_user or device.name,
-            "manufacturer": device.manufacturer,
-            "model": device.model,
-            "sw_version": device.sw_version,
-            "area_id": device.area_id,
+            "manufacturer": hardware.manufacturer,
+            "model": hardware.model,
+            "sw_version": hardware.sw_version,
+            "area_id": registries.device_area_id(devices, device),
+            "parent_device_id": getattr(device, "parent_device_id", None)
+            if registries.is_child(device) else None,
         } if device else None,
         "area": {"area_id": area.id, "name": area.name} if area else None,
         "floor": {"floor_id": floor.floor_id, "name": floor.name} if floor else None,

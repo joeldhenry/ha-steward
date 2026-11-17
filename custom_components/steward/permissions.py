@@ -15,7 +15,7 @@ from enum import StrEnum
 
 from homeassistant.auth.models import User
 from homeassistant.auth.permissions.const import POLICY_READ
-from homeassistant.config_entries import ConfigEntry
+from homeassistant.config_entries import ConfigEntry, ConfigEntryState
 from homeassistant.core import Context, HomeAssistant
 from typing import Any
 
@@ -54,6 +54,19 @@ class NotPermitted(Exception):
     """Raised when a tool is not permitted. Surfaced to the caller as text."""
 
 
+def active_entry(hass: HomeAssistant, domain: str) -> ConfigEntry | None:
+    """The Steward entry, only while it is set up and enabled.
+
+    Home Assistant cannot unregister an HTTP view, so the endpoint outlives a
+    disabled or deleted entry until the next restart. Everything that serves a
+    request asks here first, so turning Steward off takes effect at once.
+    """
+    for entry in hass.config_entries.async_entries(domain):
+        if entry.state is ConfigEntryState.LOADED and not entry.disabled_by:
+            return entry
+    return None
+
+
 class Policy:
     """Effective permissions for one request."""
 
@@ -61,6 +74,9 @@ class Policy:
         self, entry: ConfigEntry | None, user: User, refresh_token_id: str | None = None
     ) -> None:
         options = entry.options if entry else {}
+        # Without an entry there are no options to honour, and the defaults
+        # allow writes. Deny everything instead.
+        self._active = entry is not None
         self._refresh_token_id = refresh_token_id
         self._allow_write = options.get(CONF_ALLOW_WRITE, DEFAULT_ALLOW_WRITE)
         self._allow_destructive = options.get(
@@ -93,29 +109,43 @@ class Policy:
         """Whether the user's own Home Assistant policy lets them see this entity."""
         return self._user.permissions.check_entity(entity_id, POLICY_READ)
 
-    def allows(self, access: Access) -> bool:
-        """Whether this request may perform an operation of this kind."""
+    def allows(self, access: Access, *, user_scoped: bool = False) -> bool:
+        """Whether this request may perform an operation of this kind.
+
+        ``user_scoped`` marks an operation that runs as a service call under
+        the caller's own context, where Home Assistant applies that user's
+        entity permissions itself. Those are the only changes a non-admin can
+        be given. Everything else acts on the registries, the config files or
+        the integrations directly, with nothing behind it to check the user, so
+        it needs an administrator whatever the options say.
+        """
+        if not self._active:
+            return False
         if access is Access.READ:
             return True
         if access is Access.SENSITIVE:
             return self._user.is_admin
-        if self._require_admin and not self._user.is_admin:
+        if not self._user.is_admin and (self._require_admin or not user_scoped):
             return False
         if access is Access.WRITE:
             return self._allow_write
         return self._allow_write and self._allow_destructive
 
-    def check(self, access: Access, tool_name: str) -> None:
+    def check(self, access: Access, tool_name: str, *, user_scoped: bool = False) -> None:
         """Raise if the operation is not permitted, explaining what to change."""
-        if self.allows(access):
+        if self.allows(access, user_scoped=user_scoped):
             return
 
+        if not self._active:
+            raise NotPermitted(
+                "Steward is disabled or has been removed from this Home Assistant."
+            )
         if access is Access.SENSITIVE:
             raise NotPermitted(
                 f"'{tool_name}' reads information Home Assistant restricts to "
                 f"administrators, and this account is not one."
             )
-        if self._require_admin and not self._user.is_admin:
+        if not self._user.is_admin and (self._require_admin or not user_scoped):
             raise NotPermitted(
                 f"'{tool_name}' performs a {access} operation and this account is not "
                 f"a Home Assistant administrator."

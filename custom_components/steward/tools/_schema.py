@@ -68,6 +68,7 @@ def tool(
     args: dict[str, Arg] | None = None,
     op_field: str | None = None,
     op_access: dict[str, Access] | None = None,
+    user_scoped: bool = False,
 ) -> Callable[[Callable[..., Awaitable[Any]]], Tool]:
     """Declare a tool from its arguments and handler.
 
@@ -108,6 +109,7 @@ def tool(
                 handler=handler,
                 op_field=op_field,
                 op_access=op_access or {},
+                user_scoped=user_scoped,
             )
         )
 

@@ -13,6 +13,8 @@ from homeassistant.helpers import condition as condition_helper, trigger as trig
 from homeassistant.setup import async_setup_component
 from homeassistant import loader
 
+from harness import boot, run
+
 CFG = tempfile.mkdtemp(prefix="hacfg-")
 # Reloading a domain re-reads configuration.yaml, so it has to exist.
 pathlib.Path(CFG, "configuration.yaml").write_text(
@@ -24,7 +26,7 @@ pathlib.Path(CFG, "scripts.yaml").write_text("{}\n")
 
 
 async def main():
-    hass = HomeAssistant(CFG)
+    hass = await boot(CFG)
     try:
         await _body(hass)
     finally:
@@ -32,25 +34,6 @@ async def main():
 
 
 async def _body(hass):
-    hass.config.skip_pip = True
-    loader.async_setup(hass)
-    hass.config_entries = ConfigEntries(hass, {})
-    # 2026.9 keeps the trigger and condition platform registries in
-    # hass.data, populated during core setup that a bare harness skips.
-    for helper in (trigger_helper, condition_helper):
-        if hasattr(helper, "async_setup"):
-            await helper.async_setup(hass)
-    # 2026.9 requires the frame helper before integrations set up.
-    if hasattr(frame, "async_setup"):
-        frame.async_setup(hass)
-    # 2026.9 split registry setup from loading; older releases only have
-    # the load half, so call setup where it exists.
-    for mod in (ar, dr, er, fr, lr):
-        if hasattr(mod, "async_setup"):
-            mod.async_setup(hass)
-    for mod in (ar, dr, er, fr, lr):
-        await mod.async_load(hass)
-    await hass.async_start()
 
     # Real automation + script components so reload and validation work.
     assert await async_setup_component(hass, "homeassistant", {})
@@ -273,7 +256,7 @@ async def _body(hass):
     show("guest ha_render_template", await gcall("ha_render_template", {"template": "{{ 1 }}"}))
 
 
-asyncio.run(main())
+run(main)
 
 # Everything above has passed by this point. Tearing down Home Assistant's
 # threads can crash the interpreter itself on some builds, which would turn a

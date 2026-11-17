@@ -37,10 +37,17 @@ done
 The harness is deliberately dependency-free rather than using
 `pytest-homeassistant-custom-component`, so it runs against whatever Home
 Assistant version is installed. That means it also has to do the core setup a
-real instance does: the registries, the frame helper, and the trigger and
-condition platform registries. Newer releases split registry setup from loading
-and will raise "not set up" without it, so each suite calls `async_setup` where
-the installed version has it.
+real instance does: the registries, the frame helper, the config entries, and
+the trigger and condition platform registries. That list grows most releases,
+and a harness that misses a step can wait forever instead of failing: 2026.11
+made the entity registry wait for the config entries, and every suite hung for
+six hours in CI. So `harness.py` calls Home Assistant's own
+`bootstrap.async_load_base_functionality` and does not keep the list itself.
+
+`harness.run` also sets a two minute watchdog that dumps every thread, and
+fails the suite when Home Assistant logs that Steward used a deprecated API.
+Those reports are warnings for a custom integration until the removal release,
+so nothing else would turn them red in time.
 
 Each suite ends with `os._exit(0)`. Every assertion has passed by that point,
 and tearing down Home Assistant's threads can crash the interpreter itself on

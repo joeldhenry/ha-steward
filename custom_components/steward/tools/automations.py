@@ -17,10 +17,12 @@ from ._schema import Arg, tool
     Access.READ,
     {"search": Arg("string", "Case-insensitive substring matched against the name")},
 )
-async def get_automations(hass: HomeAssistant, _policy: Policy, args: dict[str, Any]) -> Any:
+async def get_automations(hass: HomeAssistant, policy: Policy, args: dict[str, Any]) -> Any:
     search = (args.get("search") or "").lower()
     results = []
     for state in hass.states.async_all("automation"):
+        if not policy.can_read_entity(state.entity_id):
+            continue
         name = str(state.attributes.get("friendly_name", ""))
         if search and search not in name.lower():
             continue
@@ -44,6 +46,7 @@ async def get_automations(hass: HomeAssistant, _policy: Policy, args: dict[str, 
         "entity_id": Arg("string", "Automation entity_id", required=True),
         "enabled": Arg("boolean", "true to enable, false to disable", required=True),
     },
+    user_scoped=True,
 )
 async def toggle_automation(hass: HomeAssistant, policy: Policy, args: dict[str, Any]) -> Any:
     service = "turn_on" if args["enabled"] else "turn_off"
@@ -64,6 +67,7 @@ async def toggle_automation(hass: HomeAssistant, policy: Policy, args: dict[str,
             "boolean", "Run the actions even if conditions are not met", default=True
         ),
     },
+    user_scoped=True,
 )
 async def trigger_automation(hass: HomeAssistant, policy: Policy, args: dict[str, Any]) -> Any:
     await hass.services.async_call(
@@ -84,6 +88,7 @@ async def trigger_automation(hass: HomeAssistant, policy: Policy, args: dict[str
         "entity_id": Arg("string", "Script entity_id", required=True),
         "variables": Arg("object", "Variables to pass into the script", default={}),
     },
+    user_scoped=True,
 )
 async def run_script(hass: HomeAssistant, policy: Policy, args: dict[str, Any]) -> Any:
     data: dict[str, Any] = {"entity_id": args["entity_id"]}
@@ -101,6 +106,7 @@ async def run_script(hass: HomeAssistant, policy: Policy, args: dict[str, Any]) 
         "entity_id": Arg("string", "Scene entity_id", required=True),
         "transition": Arg("number", "Transition time in seconds"),
     },
+    user_scoped=True,
 )
 async def activate_scene(hass: HomeAssistant, policy: Policy, args: dict[str, Any]) -> Any:
     data: dict[str, Any] = {"entity_id": args["entity_id"]}

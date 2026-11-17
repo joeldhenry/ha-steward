@@ -23,10 +23,14 @@ from .const import (
     SUPPORTED_PROTOCOL_VERSIONS,
 )
 from .knowledge import KNOWLEDGE, PROMPTS, read_knowledge
-from .permissions import NotPermitted, Policy
+from .permissions import NotPermitted, Policy, active_entry
 from .tools import TOOLS
 
 _LOGGER = logging.getLogger(__name__)
+
+# No client can use a result this large, and building several at once is how
+# one caller exhausts the instance's memory.
+MAX_RESULT_CHARS = 2_000_000
 
 
 def json_rpc_error(request_id: Any, code: int, message: str) -> dict[str, Any]:
@@ -51,8 +55,7 @@ class MCPProtocol:
 
     @property
     def _policy(self) -> Policy:
-        entries = self.hass.config_entries.async_entries(DOMAIN)
-        return Policy(entries[0] if entries else None, self.user, self.refresh_token_id)
+        return Policy(active_entry(self.hass, DOMAIN), self.user, self.refresh_token_id)
 
     async def dispatch(self, message: dict[str, Any]) -> dict[str, Any] | None:
         """Handle one message. Returns None for notifications."""
@@ -63,6 +66,12 @@ class MCPProtocol:
         request_id = message.get("id")
         params = message.get("params") or {}
         is_notification = "id" not in message
+        # Positional params are valid JSON-RPC but no MCP method takes them, and
+        # passing a list on would fail inside a handler and log a traceback.
+        if not isinstance(params, dict):
+            return None if is_notification else json_rpc_error(
+                request_id, INVALID_PARAMS, "params must be an object"
+            )
 
         if not isinstance(method, str):
             return None if is_notification else json_rpc_error(request_id, INVALID_REQUEST, "Missing method")
@@ -139,7 +148,7 @@ class MCPProtocol:
                     },
                 }
                 for tool in TOOLS.values()
-                if policy.allows(tool.min_access)
+                if policy.allows(tool.min_access, user_scoped=tool.user_scoped)
             ]
         }
 
@@ -157,7 +166,7 @@ class MCPProtocol:
         # Checked after validation so the gate applies to the operation actually
         # requested, not to the tool as a whole.
         policy = self._policy
-        policy.check(tool.access_for(arguments), tool.name)
+        policy.check(tool.access_for(arguments), tool.name, user_scoped=tool.user_scoped)
 
         try:
             result = await tool.handler(self.hass, policy, arguments)
@@ -169,7 +178,14 @@ class MCPProtocol:
             _LOGGER.exception("Tool %s failed", tool.name)
             return _tool_error(f"{type(err).__name__}: {err}")
 
-        return {"content": [{"type": "text", "text": _as_text(result)}], "isError": False}
+        text = _as_text(result)
+        if len(text) > MAX_RESULT_CHARS:
+            return _tool_error(
+                f"{tool.name} produced {len(text):,} characters, over the "
+                f"{MAX_RESULT_CHARS:,} limit. Narrow the request with a filter, a "
+                f"shorter window or a smaller limit."
+            )
+        return {"content": [{"type": "text", "text": text}], "isError": False}
 
     async def _list_resources(self, _params: dict[str, Any]) -> dict[str, Any]:
         return {

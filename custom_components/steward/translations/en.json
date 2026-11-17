@@ -13,8 +13,8 @@
         },
         "data_description": {
           "allow_write": "Changing states, calling services, and editing the registries. Turn this off for an audit-only connection.",
-          "allow_destructive": "Deleting configuration and restarting Home Assistant.",
-          "require_admin": "Non-administrators get read-only access regardless of the settings above.",
+          "allow_destructive": "Deleting configuration, restarting Home Assistant, and service calls that stop it, purge the recorder, run shell or Python code, or act on the supervisor and backups.",
+          "require_admin": "Non-administrators get read-only access regardless of the settings above. Turned off, they may also call services and run scripts and scenes within their own Home Assistant permissions. Changing configuration, registries or integrations always needs an administrator.",
           "rate_limit": "Maximum requests one client may make per window. A model retrying in a loop can otherwise saturate the instance.",
           "rate_window": "Length of the sliding window, in seconds."
         }
@@ -37,8 +37,8 @@
         },
         "data_description": {
           "allow_write": "Changing states, calling services, and editing the registries. Turn this off for an audit-only connection.",
-          "allow_destructive": "Deleting configuration and restarting Home Assistant.",
-          "require_admin": "Non-administrators get read-only access regardless of the settings above.",
+          "allow_destructive": "Deleting configuration, restarting Home Assistant, and service calls that stop it, purge the recorder, run shell or Python code, or act on the supervisor and backups.",
+          "require_admin": "Non-administrators get read-only access regardless of the settings above. Turned off, they may also call services and run scripts and scenes within their own Home Assistant permissions. Changing configuration, registries or integrations always needs an administrator.",
           "rate_limit": "Maximum requests one client may make per window. A model retrying in a loop can otherwise saturate the instance.",
           "rate_window": "Length of the sliding window, in seconds."
         }

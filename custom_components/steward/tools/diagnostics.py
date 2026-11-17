@@ -14,6 +14,17 @@ from homeassistant.util import dt as dt_util
 from ..permissions import Access, Policy
 from ._schema import Arg, tool
 
+# One call is enough to load a whole recorder table into memory, so every
+# window and id list has a ceiling. The rate limit does not help with that.
+MAX_HISTORY_HOURS = 24 * 31
+MAX_STATISTICS_DAYS = 366 * 5
+MAX_FIVE_MINUTE_DAYS = 10
+MAX_IDS = 50
+# Without an entity the logbook returns every event in the house.
+MAX_UNFILTERED_LOGBOOK_HOURS = 48
+# The log is read from the end. A long-running instance's file can be gigabytes.
+MAX_LOG_BYTES = 4 * 1024 * 1024
+
 # A log record starts with a timestamp. Anything else is a continuation of the
 # record above it, which is how a traceback reaches the log.
 _RECORD_START = re.compile(r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}")
@@ -54,7 +65,8 @@ def _require(hass: HomeAssistant, component: str) -> None:
     {
         "entity_ids": Arg("array", "Entities to fetch history for", required=True,
                           items={"type": "string"}),
-        "hours_back": Arg("number", "How far back to look", default=24),
+        "hours_back": Arg("number", "How far back to look, up to 31 days", default=24,
+                          minimum=0, maximum=MAX_HISTORY_HOURS),
         "minimal": Arg(
             "boolean",
             "Drop attributes and insignificant changes. Turning this off multiplies "
@@ -70,6 +82,8 @@ async def history(hass: HomeAssistant, policy: Policy, args: dict[str, Any]) -> 
     start = dt_util.utcnow() - timedelta(hours=args.get("hours_back", 24))
     minimal = args.get("minimal", True)
 
+    if len(args["entity_ids"]) > MAX_IDS:
+        raise ValueError(f"At most {MAX_IDS} entities per call.")
     entity_ids = [e for e in args["entity_ids"] if policy.can_read_entity(e)]
     if not entity_ids:
         raise ValueError("None of the requested entities are readable by this account.")
@@ -114,16 +128,27 @@ async def history(hass: HomeAssistant, policy: Policy, args: dict[str, Any]) -> 
     {
         "statistic_ids": Arg("array", "Statistic IDs. Omit to list what is available.",
                              items={"type": "string"}),
-        "days_back": Arg("number", "How far back to start", default=7),
+        "days_back": Arg(
+            "number",
+            "How far back to start. The 5minute period is kept for about 10 days.",
+            default=7, minimum=0, maximum=MAX_STATISTICS_DAYS,
+        ),
         "period": Arg("string", "Bucket size", default="day",
                       enum=["5minute", "hour", "day", "week", "month"]),
     },
 )
-async def statistics(hass: HomeAssistant, _policy: Policy, args: dict[str, Any]) -> Any:
+async def statistics(hass: HomeAssistant, policy: Policy, args: dict[str, Any]) -> Any:
     _require(hass, "recorder")
     from homeassistant.components.recorder import get_instance, statistics as rec_stats
 
     instance = get_instance(hass)
+
+    def readable(statistic_id: str) -> bool:
+        # A statistic recorded from an entity shares its id. External ones,
+        # written as source:name, belong to no entity and so to administrators.
+        if policy.user.is_admin:
+            return True
+        return ":" not in statistic_id and policy.can_read_entity(statistic_id)
 
     if not args.get("statistic_ids"):
         ids = await instance.async_add_executor_job(rec_stats.list_statistic_ids, hass, None, None)
@@ -135,15 +160,25 @@ async def statistics(hass: HomeAssistant, _policy: Policy, args: dict[str, Any])
                 "has_mean": item.get("has_mean"),
             }
             for item in ids
+            if readable(item["statistic_id"])
         ]
 
-    start = dt_util.utcnow() - timedelta(days=args.get("days_back", 7))
+    if len(args["statistic_ids"]) > MAX_IDS:
+        raise ValueError(f"At most {MAX_IDS} statistics per call.")
+    statistic_ids = {s for s in args["statistic_ids"] if readable(s)}
+    if not statistic_ids:
+        raise ValueError("None of the requested statistics are readable by this account.")
+
+    days_back = args.get("days_back", 7)
+    if args.get("period") == "5minute":
+        days_back = min(days_back, MAX_FIVE_MINUTE_DAYS)
+    start = dt_util.utcnow() - timedelta(days=days_back)
     result = await instance.async_add_executor_job(
         rec_stats.statistics_during_period,
         hass,
         start,
         None,
-        set(args["statistic_ids"]),
+        statistic_ids,
         args.get("period", "day"),
         None,
         {"change", "sum", "min", "max", "mean"},
@@ -159,7 +194,11 @@ async def statistics(hass: HomeAssistant, _policy: Policy, args: dict[str, Any])
     Access.READ,
     {
         "entity_id": Arg("string", "Restrict to one entity"),
-        "hours_back": Arg("number", "How far back to look", default=24),
+        "hours_back": Arg(
+            "number",
+            "How far back to look: up to 31 days for one entity, 48 hours without one.",
+            default=24, minimum=0, maximum=MAX_HISTORY_HOURS,
+        ),
         "limit": Arg(
             "integer",
             "Most recent entries to return. A busy house logs thousands per hour, so "
@@ -175,10 +214,13 @@ async def logbook(hass: HomeAssistant, policy: Policy, args: dict[str, Any]) -> 
 
     from homeassistant.components.logbook.helpers import async_determine_event_types
 
-    start = dt_util.utcnow() - timedelta(hours=args.get("hours_back", 24))
     entity_ids = [args["entity_id"]] if args.get("entity_id") else None
     if entity_ids and not all(policy.can_read_entity(e) for e in entity_ids):
         raise ValueError("That entity is not readable by this account.")
+    hours_back = args.get("hours_back", 24)
+    if entity_ids is None:
+        hours_back = min(hours_back, MAX_UNFILTERED_LOGBOOK_HOURS)
+    start = dt_util.utcnow() - timedelta(hours=hours_back)
 
     event_types = async_determine_event_types(hass, entity_ids, None)
     events = processor.EventProcessor(hass, event_types, entity_ids=entity_ids)
@@ -186,7 +228,12 @@ async def logbook(hass: HomeAssistant, policy: Policy, args: dict[str, Any]) -> 
         events.get_events, start, dt_util.utcnow()
     )
     if entity_ids is None:
-        rows = [r for r in rows if not r.get("entity_id") or policy.can_read_entity(r["entity_id"])]
+        # Rows with no entity describe the system: integrations loading, scripts
+        # and automations by name. Those are for administrators.
+        rows = [
+            r for r in rows
+            if (policy.can_read_entity(r["entity_id"]) if r.get("entity_id") else policy.user.is_admin)
+        ]
 
     limit = args.get("limit", 100)
     if len(rows) <= limit:
@@ -216,10 +263,15 @@ async def error_log(hass: HomeAssistant, _policy: Policy, args: dict[str, Any]) 
 
     def read() -> list[str]:
         try:
-            with open(path, encoding="utf8", errors="replace") as handle:
-                return handle.read().splitlines()
+            with open(path, "rb") as handle:
+                size = handle.seek(0, 2)
+                handle.seek(max(0, size - MAX_LOG_BYTES))
+                tail = handle.read().decode("utf8", errors="replace")
         except FileNotFoundError:
             return []
+        lines = tail.splitlines()
+        # A read that starts mid-file starts mid-line; drop the fragment.
+        return lines[1:] if size > MAX_LOG_BYTES else lines
 
     all_lines = await hass.async_add_executor_job(read)
     if not all_lines:

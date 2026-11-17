@@ -33,6 +33,7 @@ from .const import (
     PARSE_ERROR,
 )
 from .oauth_client import ClientMetadataView
+from .permissions import active_entry
 from .protocol import MCPProtocol, json_rpc_error
 from .rate_limit import RateLimiter
 
@@ -51,8 +52,8 @@ def async_register_http(hass: HomeAssistant) -> None:
 
 def _limiter(hass: HomeAssistant) -> RateLimiter:
     """One limiter per instance, rebuilt when the options change."""
-    entries = hass.config_entries.async_entries(DOMAIN)
-    options = entries[0].options if entries else {}
+    entry = active_entry(hass, DOMAIN)
+    options = entry.options if entry else {}
     max_calls = options.get(CONF_RATE_LIMIT, DEFAULT_RATE_LIMIT)
     window = options.get(CONF_RATE_WINDOW, DEFAULT_RATE_WINDOW)
 
@@ -76,6 +77,12 @@ class MCPView(HomeAssistantView):
         """Handle a JSON-RPC request or batch."""
         hass = request.app[KEY_HASS]
         user = request[KEY_HASS_USER]
+
+        if active_entry(hass, DOMAIN) is None:
+            return self.json_message(
+                "Steward is disabled or has been removed from this Home Assistant.",
+                status_code=503,
+            )
 
         try:
             payload = await request.json()

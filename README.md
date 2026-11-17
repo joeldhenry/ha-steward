@@ -1,13 +1,14 @@
 # Steward - Home Assistant MCP Plugin
 
-[![HACS Custom](https://img.shields.io/badge/HACS-Custom-41BDF5.svg)](https://hacs.xyz)
+[![Home Assistant Marketplace](https://img.shields.io/badge/Marketplace-Custom-41BDF5.svg)](https://www.home-assistant.io/integrations/marketplace/)
 [![Validate](https://github.com/joeldhenry/ha-steward/actions/workflows/validate.yml/badge.svg)](https://github.com/joeldhenry/ha-steward/actions/workflows/validate.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 A Model Context Protocol (MCP) server for Home Assistant, designed for modern
 Home Assistant configuration and setup.
 
-Steward runs inside Home Assistant as a HACS integration and gives an AI
+Steward runs inside Home Assistant as a custom integration, installed from the
+Marketplace (HACS before 2026.11), and gives an AI
 assistant (Claude, ChatGPT, Gemini, Copilot) the ability to read and repair how
 your instance is configured, as well as to control it.
 
@@ -28,7 +29,7 @@ https://your-home-assistant/api/steward/mcp
 - [Permissions](#permissions)
 - [The audit](#the-audit)
 - [Knowledge resources](#knowledge-resources)
-- [Installation](#installation) — [HACS](#1-install-with-hacs), [configure](#2-add-the-integration), [connect](#3-connect-your-ai-client)
+- [Installation](#installation) — [Marketplace or HACS](#1-install-from-the-marketplace), [configure](#2-add-the-integration), [connect](#3-connect-your-ai-client)
 - [Tools](#tools)
 - [Troubleshooting](#troubleshooting)
 
@@ -141,7 +142,22 @@ Four access levels, following Home Assistant's own gating:
 | `read` | any authenticated user | states, services, running a script |
 | `sensitive` | administrators | registries, logs, traces, automation logic, templates, `ha_audit` |
 | `write` | administrators, if enabled | service calls, registry edits, config edits |
-| `destructive` | administrators, if enabled | deleting config, restarting |
+| `destructive` | administrators, if enabled | deleting config, restarting, and service calls that stop or restart Home Assistant, purge the recorder, run `shell_command` or `python_script`, or act on `hassio` and `backup` |
+
+Turning off **Require an administrator account** opens one thing to other
+household members: service calls, scripts, scenes and automation toggles, each
+run under their own account so Home Assistant applies their entity permissions.
+Registry, configuration and integration changes act on Home Assistant directly,
+with nothing behind them to check the user, so they need an administrator
+whatever the options say.
+
+The destructive switch does not cover every way to lose work. A `write`
+connection can replace an automation or a dashboard with a different one, or
+create an automation with a webhook trigger. Treat write access as the ability
+to change how the house behaves, and keep backups.
+
+Disabling or deleting the integration stops the endpoint at once, without a
+restart.
 
 `sensitive` exists because Home Assistant treats these reads as admin-only
 itself (the error log and registry listings are `@require_admin` in core), and
@@ -284,26 +300,35 @@ overrides. Both present changes for approval before touching anything.
 **Requirements**
 
 - Home Assistant **2025.6** or newer
-- [HACS](https://hacs.xyz) installed
+- On Home Assistant 2026.11 or newer, nothing else: the
+  [Marketplace](https://www.home-assistant.io/integrations/marketplace/) is
+  built in. On older releases, [HACS](https://hacs.xyz) installed.
 - For a cloud-hosted AI client to reach it, your instance must be reachable over
   HTTPS: Nabu Casa Cloud, a reverse proxy, or a Cloudflare tunnel. Nothing
   extra is needed for a client on the same network.
 
-### 1. Install with HACS
+### 1. Install from the Marketplace
+
+Home Assistant 2026.11 and newer:
+
+[![Open your Home Assistant instance and open a repository in the Marketplace.](https://my.home-assistant.io/badges/marketplace_repository.svg)](https://my.home-assistant.io/redirect/marketplace_repository/?owner=joeldhenry&repository=ha-steward&category=integration)
+
+Home Assistant 2026.10 and older, with HACS:
 
 [![Open your Home Assistant instance and open a repository inside the Home Assistant Community Store.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=joeldhenry&repository=ha-steward&category=integration)
 
-Or add it by hand:
+Or add it by hand. The steps are the same in both; from 2026.11 the page is
+**Settings → Marketplace** and HACS is no longer a separate install:
 
-1. Open **HACS** in the Home Assistant sidebar.
+1. Open **Marketplace** in Settings, or **HACS** in the sidebar on older releases.
 2. Click the **⋮** menu, top right → **Custom repositories**.
 3. Paste `https://github.com/joeldhenry/ha-steward` into **Repository**.
 4. Set **Type** to **Integration**, then click **Add**.
-5. Close the dialog, search HACS for **Steward**, and open it.
+5. Close the dialog, search for **Steward**, and open it.
 6. Click **Download**, then **Download** again to confirm.
 7. Restart Home Assistant: **Settings → System → ⋮ (top right) → Restart**.
 
-> HACS downloads the files, but Home Assistant only loads a new integration at
+> The download puts the files in place, but Home Assistant only loads a new integration at
 > startup. Skipping the restart is the most common reason Steward does not appear
 > in the next step.
 
@@ -391,7 +416,7 @@ whole object back.
 ## Troubleshooting
 
 **Steward does not appear under "Add integration"**
-Home Assistant was not restarted after the HACS download. Restart, then hard
+Home Assistant was not restarted after the download. Restart, then hard
 refresh the browser.
 
 **The client says it cannot reach the server**

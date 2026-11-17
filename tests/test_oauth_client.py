@@ -13,6 +13,8 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.network import NoURLAvailableError
 
+from harness import run
+
 VALIDATOR = pathlib.Path(__file__).with_name("indieauth_2026_9_2.py")
 
 
@@ -64,7 +66,7 @@ async def main():
     finally:
         await hass.async_stop()
 
-asyncio.run(main())
+run(main)
 
 # Everything above has passed by this point. Tearing down Home Assistant's
 # threads can crash the interpreter itself on some builds, which would turn a

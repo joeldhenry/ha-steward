@@ -6,6 +6,7 @@ from typing import Any
 
 from homeassistant.core import HomeAssistant
 
+from .. import registries
 from ..permissions import Access, Policy
 from ._schema import Arg, tool
 
@@ -44,8 +45,7 @@ async def get_states(hass: HomeAssistant, policy: Policy, args: dict[str, Any]) 
             if args.get("label_id") and args["label_id"] not in entry.labels:
                 continue
             if args.get("area_id"):
-                device = devices.async_get(entry.device_id) if entry.device_id else None
-                if (entry.area_id or (device.area_id if device else None)) != args["area_id"]:
+                if registries.entity_area_id(devices, entry) != args["area_id"]:
                     continue
             allowed.add(entry.entity_id)
 
@@ -100,19 +100,51 @@ async def get_state(hass: HomeAssistant, policy: Policy, args: dict[str, Any]) -
     }
 
 
+# Services that stop or restart the instance, delete history, run code on the
+# host or reach the supervisor. The destructive switch exists to keep exactly
+# these away from a client, and a generic service call must not be a way
+# around it: ha_restart asks for the destructive level and a confirmation, so
+# homeassistant.restart through here asks for the same level.
+DESTRUCTIVE_SERVICE_DOMAINS = frozenset(
+    {"hassio", "backup", "shell_command", "python_script", "pyscript"}
+)
+DESTRUCTIVE_SERVICES = frozenset(
+    {
+        ("homeassistant", "stop"),
+        ("homeassistant", "restart"),
+        ("recorder", "purge"),
+        ("recorder", "purge_entities"),
+        ("recorder", "disable"),
+        ("system_log", "clear"),
+    }
+)
+
+
+def is_destructive_service(domain: str, service: str) -> bool:
+    return domain in DESTRUCTIVE_SERVICE_DOMAINS or (domain, service) in DESTRUCTIVE_SERVICES
+
+
 @tool(
     "ha_call_service",
     "Call any Home Assistant service, for example light.turn_on. Use ha_get_services "
-    "to discover the fields a service accepts.",
+    "to discover the fields a service accepts. Services that stop or restart Home "
+    "Assistant, purge the recorder, run shell or Python code, or act on the "
+    "supervisor and backups count as destructive: they need an administrator and "
+    "'Allow destructive operations'.",
     Access.WRITE,
     {
         "domain": Arg("string", "Service domain, e.g. 'light'", required=True),
         "service": Arg("string", "Service name, e.g. 'turn_on'", required=True),
         "service_data": Arg("object", "Payload including the target", default={}),
     },
+    user_scoped=True,
 )
 async def call_service(hass: HomeAssistant, policy: Policy, args: dict[str, Any]) -> Any:
-    domain, service = args["domain"], args["service"]
+    # Service names are case-insensitive to Home Assistant, so compare as it does.
+    domain, service = args["domain"].lower(), args["service"].lower()
+    if is_destructive_service(domain, service):
+        # Not user-scoped: these are never open to a non-administrator.
+        policy.check(Access.DESTRUCTIVE, f"ha_call_service {domain}.{service}")
     if not hass.services.has_service(domain, service):
         raise ValueError(f"No such service: {domain}.{service}")
 

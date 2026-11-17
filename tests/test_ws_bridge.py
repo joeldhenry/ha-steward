@@ -20,6 +20,8 @@ from homeassistant.helpers import (area_registry as ar, device_registry as dr,
 from homeassistant.helpers import frame
 from homeassistant.setup import async_setup_component
 
+from harness import boot, run
+
 
 class FakeUser:
     id = "test-user"
@@ -41,23 +43,9 @@ async def main():
     from custom_components.steward.ws_bridge import ws_call
     import homeassistant.const as ha_const
 
-    hass = HomeAssistant(tempfile.mkdtemp(prefix="hacfg-"))
+    hass = await boot(tempfile.mkdtemp(prefix="hacfg-"))
     policy = FakePolicy()
     try:
-        hass.config.skip_pip = True
-        loader.async_setup(hass)
-        hass.config_entries = ConfigEntries(hass, {})
-        # 2026.9 requires the frame helper before integrations set up.
-        if hasattr(frame, "async_setup"):
-            frame.async_setup(hass)
-        # 2026.9 split registry setup from loading; older releases only have
-        # the load half, so call setup where it exists.
-        for mod in (ar, dr, er, fr, lr):
-            if hasattr(mod, "async_setup"):
-                mod.async_setup(hass)
-        for mod in (ar, dr, er, fr, lr):
-            await mod.async_load(hass)
-        await hass.async_start()
 
         await async_setup_component(hass, "homeassistant", {})
         assert await async_setup_component(hass, "input_boolean", {})
@@ -112,7 +100,7 @@ async def main():
     finally:
         await hass.async_stop()
 
-asyncio.run(main())
+run(main)
 
 # Everything above has passed by this point. Tearing down Home Assistant's
 # threads can crash the interpreter itself on some builds, which would turn a
